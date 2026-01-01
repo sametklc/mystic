@@ -1,0 +1,74 @@
+### IntelliJ IDEA ###
+out/
+!**/src/main/**/out/
+!**/src/test/**/out/
+
+### Eclipse ###
+.apt_generated
+.classpath
+.factorypath
+.project
+.settings
+.springBeans
+.sts4-cache
+bin/
+!**/src/main/**/bin/
+!**/src/test/**/bin/
+
+### NetBeans ###
+/nbproject/private/
+/nbbuild/
+/dist/
+/nbdist/
+/.nb-gradle/
+
+### VS Code ###
+.vscode/
+
+### Mac OS ###
+.DS_Store
+
+### Flutter ###
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+build/
+*.iml
+
+### Firebase ###
+lib/firebase_options.dart
+firebase-service-account.json
+**/firebase-service-account*.json
+google-services.json
+GoogleService-Info.plist
+
+### Python Backend ###
+backend/venv/
+backend/.venv/
+backend/__pycache__/
+backend/**/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+pip-log.txt
+pip-delete-this-directory.txt
+
+### Environment Variables ###
+.env
+.env.local
+.env.*.local
+backend/.env
+
+### IDE ###
+*.swp
+*.swo
+*~
+.idea/
+
+### Secrets & Credentials ###
+*.pem
+*.key
+secrets/
+credentials/

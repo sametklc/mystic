@@ -1,0 +1,41 @@
+# =============================================================================
+# Render.com Deployment Configuration
+# =============================================================================
+# This file configures the Mystic Tarot API for deployment on Render.
+# https://render.com/docs/yaml-spec
+
+services:
+  - type: web
+    name: mystic-tarot-api
+    runtime: python
+    region: oregon  # or your preferred region
+
+    # Build Configuration
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+
+    # Environment Variables (set secrets in Render Dashboard)
+    envVars:
+      - key: ENV
+        value: production
+      - key: PYTHON_VERSION
+        value: "3.11.7"
+      - key: REPLICATE_API_TOKEN
+        sync: false  # Set manually in dashboard
+      - key: FIREBASE_CREDENTIALS_JSON
+        sync: false  # Set manually in dashboard
+
+    # Health Check
+    healthCheckPath: /health
+
+    # Scaling (adjust based on your plan)
+    plan: free  # Options: free, starter, standard, pro
+
+    # Auto-deploy from GitHub
+    autoDeploy: true
+
+    # Branch to deploy
+    branch: main
+
+    # Root directory (if backend is in a subfolder)
+    rootDir: backend

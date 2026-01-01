@@ -1,0 +1,27 @@
+# Mystic Tarot Backend Dependencies
+# Python 3.11+
+
+# Web Framework
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+
+# AI & ML
+replicate==1.0.4
+
+# Firebase
+firebase-admin==6.6.0
+
+# HTTP Client
+httpx==0.28.1
+
+# Environment & Config
+python-dotenv==1.0.1
+
+# Data Validation (included with FastAPI, but pinned for clarity)
+pydantic==2.10.4
+
+# Security
+python-jose[cryptography]==3.3.0
+
+# ASGI Server (production)
+gunicorn==23.0.0
