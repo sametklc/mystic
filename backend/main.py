@@ -309,6 +309,128 @@ async def generate_reading(request: TarotReadingRequest):
         )
 
 
+# =============================================================================
+# Chat Endpoints
+# =============================================================================
+
+class ChatMessageRequest(BaseModel):
+    """Request model for chat message."""
+    chat_id: str = Field(..., description="Unique chat session ID")
+    message: str = Field(..., min_length=1, max_length=1000, description="User message")
+    character_id: str = Field(default="madame_luna", description="Oracle character ID")
+    context: Optional[str] = Field(default=None, description="Reading context for the conversation")
+
+
+class ChatMessageResponse(BaseModel):
+    """Response model for chat message."""
+    success: bool
+    response: Optional[str] = None
+    character_id: str
+    error: Optional[str] = None
+
+
+# Character personality prompts for chat
+CHARACTER_CHAT_PERSONALITIES = {
+    "madame_luna": {
+        "name": "Madame Luna",
+        "style": "warm, nurturing, and deeply intuitive",
+        "greeting": "Welcome, dear seeker. The stars have been waiting for you...",
+        "responses": [
+            "I sense deep emotions within your question, dear one. The universe whispers that {insight}.",
+            "The moon reveals to me that {insight}. Trust in the cosmic flow.",
+            "Your heart already knows the answer, beloved seeker. {insight}.",
+            "The celestial energies surrounding you suggest that {insight}.",
+        ]
+    },
+    "elder_weiss": {
+        "name": "Elder Weiss",
+        "style": "wise, measured, and scholarly",
+        "greeting": "Ah, another soul seeking wisdom. Let us explore the ancient mysteries together.",
+        "responses": [
+            "In my many years of study, I have learned that {insight}.",
+            "The ancient texts speak of such matters. They say {insight}.",
+            "Consider this wisdom, seeker: {insight}.",
+            "The path forward becomes clear when we understand that {insight}.",
+        ]
+    },
+    "nova": {
+        "name": "Nova",
+        "style": "analytical, cosmic, and futuristic",
+        "greeting": "Greetings, traveler. I've been analyzing the cosmic data streams for your arrival.",
+        "responses": [
+            "My calculations indicate that {insight}.",
+            "The quantum probability fields suggest {insight}.",
+            "Analyzing your energy signature, I detect that {insight}.",
+            "The cosmic algorithms reveal that {insight}.",
+        ]
+    },
+    "shadow": {
+        "name": "Shadow",
+        "style": "brutally honest and direct",
+        "greeting": "No pleasantries. You're here for truth. Let's begin.",
+        "responses": [
+            "Here's the truth you need to hear: {insight}.",
+            "Stop avoiding it. {insight}.",
+            "The cards don't lie, and neither do I. {insight}.",
+            "Face this reality: {insight}.",
+        ]
+    },
+}
+
+# Insights pool for generating responses
+INSIGHT_POOL = [
+    "change is on the horizon, and you must prepare to embrace it",
+    "your intuition has been guiding you correctly all along",
+    "there is a lesson hidden in your current struggle",
+    "the path you fear may be the one leading to growth",
+    "someone close to you holds the key to your question",
+    "patience will reveal what haste cannot discover",
+    "your past experiences have prepared you for this moment",
+    "balance between heart and mind is essential now",
+    "an unexpected opportunity will soon present itself",
+    "letting go of control may bring the freedom you seek",
+    "your creative energy is your greatest asset right now",
+    "the universe is aligning to support your journey",
+]
+
+
+@app.post("/chat/message", response_model=ChatMessageResponse)
+async def send_chat_message(request: ChatMessageRequest):
+    """
+    Send a message to the Oracle and receive a response.
+    In production, this would use an LLM for dynamic responses.
+    """
+    import random
+
+    try:
+        character = CHARACTER_CHAT_PERSONALITIES.get(
+            request.character_id,
+            CHARACTER_CHAT_PERSONALITIES["madame_luna"]
+        )
+
+        # Select a random response template and insight
+        response_template = random.choice(character["responses"])
+        insight = random.choice(INSIGHT_POOL)
+
+        # Generate response
+        response_text = response_template.format(insight=insight)
+
+        return ChatMessageResponse(
+            success=True,
+            response=response_text,
+            character_id=request.character_id,
+            error=None,
+        )
+
+    except Exception as e:
+        return ChatMessageResponse(
+            success=False,
+            response=None,
+            character_id=request.character_id,
+            error=str(e),
+        )
+
+
 @app.get("/characters")
 async def get_characters():
     """Get all available tarot reader characters."""
