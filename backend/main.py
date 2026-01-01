@@ -245,8 +245,8 @@ async def visualize_tarot(request: TarotVisualizationRequest):
             }
         )
 
-        # Replicate returns a list of URLs
-        image_url = output[0] if output else None
+        # Replicate returns a list of FileOutput objects, convert to string URL
+        image_url = str(output[0]) if output else None
 
         return TarotVisualizationResponse(
             success=True,
