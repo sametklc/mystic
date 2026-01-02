@@ -165,6 +165,19 @@ class TarotReadingRequest(BaseModel):
         default=True,
         description="Whether the card is upright or reversed"
     )
+    # User preferences for personalized readings
+    knowledge_level: Optional[str] = Field(
+        default=None,
+        description="User's esoteric knowledge level: novice, seeker, or adept"
+    )
+    preferred_tone: Optional[str] = Field(
+        default=None,
+        description="User's preferred reading tone: gentle or brutal"
+    )
+    gender: Optional[str] = Field(
+        default=None,
+        description="User's gender for pronoun usage: female, male, or other"
+    )
 
 
 class TarotReadingResponse(BaseModel):
@@ -307,12 +320,15 @@ async def generate_reading(request: TarotReadingRequest):
         # Get the tarot interpretation service
         tarot_service = get_tarot_service()
 
-        # Generate dynamic interpretation
+        # Generate dynamic interpretation with user preferences
         interpretation = await tarot_service.generate_reading_interpretation(
             question=request.question,
             card_name=card_name,
             is_upright=request.is_upright,
             character_id=request.character_id,
+            knowledge_level=request.knowledge_level,
+            preferred_tone=request.preferred_tone,
+            gender=request.gender,
         )
 
         # Build card list for response
@@ -337,6 +353,143 @@ async def generate_reading(request: TarotReadingRequest):
         )
 
 
+@app.get("/tarot/daily")
+async def get_daily_tarot(device_id: str, character_id: str = "madame_luna"):
+    """
+    Get the daily tarot card reading for a user.
+
+    This is a "Card of the Day" feature that:
+    1. Checks if the user already drew a daily card TODAY (server date)
+    2. If YES: Returns the existing reading (no credits charged, no OpenAI call)
+    3. If NO: Draws a random card, generates interpretation, saves to DB, returns new reading
+
+    The reading provides general guidance without requiring a user question.
+    """
+    import random
+    from datetime import date, datetime
+
+    today = date.today().isoformat()
+
+    try:
+        # Check if we have Firebase configured
+        if app.state.db:
+            # Check for existing daily reading in Firestore
+            daily_ref = app.state.db.collection("users").document(device_id).collection("daily_tarot").document(today)
+            existing_doc = daily_ref.get()
+
+            if existing_doc.exists:
+                # User already has a daily reading for today - return it
+                data = existing_doc.to_dict()
+                return {
+                    "success": True,
+                    "is_new": False,
+                    "date": today,
+                    "card_name": data.get("card_name", "The Fool"),
+                    "card_image": data.get("card_image", "assets/cards/major/00_fool.png"),
+                    "is_upright": data.get("is_upright", True),
+                    "interpretation": data.get("interpretation", ""),
+                    "summary": data.get("summary", ""),
+                    "character_id": data.get("character_id", character_id),
+                    "error": None,
+                }
+
+        # No existing reading - draw a new card
+        major_arcana = list(MAJOR_ARCANA_MEANINGS.keys())
+        card_name = random.choice(major_arcana)
+        is_upright = random.random() > 0.3  # 70% chance upright
+
+        # Map card name to asset path
+        card_filename_map = {
+            "The Fool": "00_fool",
+            "The Magician": "01_magician",
+            "The High Priestess": "02_high_priestess",
+            "The Empress": "03_empress",
+            "The Emperor": "04_emperor",
+            "The Hierophant": "05_hierophant",
+            "The Lovers": "06_lovers",
+            "The Chariot": "07_chariot",
+            "Strength": "08_strength",
+            "The Hermit": "09_hermit",
+            "Wheel of Fortune": "10_wheel_of_fortune",
+            "Justice": "11_justice",
+            "The Hanged Man": "12_hanged_man",
+            "Death": "13_death",
+            "Temperance": "14_temperance",
+            "The Devil": "15_devil",
+            "The Tower": "16_tower",
+            "The Star": "17_star",
+            "The Moon": "18_moon",
+            "The Sun": "19_sun",
+            "Judgement": "20_judgement",
+            "The World": "21_world",
+        }
+        card_filename = card_filename_map.get(card_name, "00_fool")
+        card_image = f"assets/cards/major/{card_filename}.png"
+
+        # Generate interpretation using OpenAI (no question - general guidance)
+        tarot_service = get_tarot_service()
+
+        # Special system prompt for daily card readings
+        interpretation = await tarot_service.generate_daily_reading(
+            card_name=card_name,
+            is_upright=is_upright,
+            character_id=character_id,
+        )
+
+        # Generate a one-line summary
+        card_data = MAJOR_ARCANA_MEANINGS.get(card_name, {})
+        keywords = card_data.get("keywords", ["guidance", "insight"])
+        summary = f"Today's energy: {', '.join(keywords[:2]).title()}"
+
+        # Save to Firestore if available
+        if app.state.db:
+            daily_ref = app.state.db.collection("users").document(device_id).collection("daily_tarot").document(today)
+            daily_ref.set({
+                "card_name": card_name,
+                "card_image": card_image,
+                "is_upright": is_upright,
+                "interpretation": interpretation,
+                "summary": summary,
+                "character_id": character_id,
+                "type": "daily",
+                "created_at": datetime.utcnow(),
+            })
+
+        return {
+            "success": True,
+            "is_new": True,
+            "date": today,
+            "card_name": card_name,
+            "card_image": card_image,
+            "is_upright": is_upright,
+            "interpretation": interpretation,
+            "summary": summary,
+            "character_id": character_id,
+            "error": None,
+        }
+
+    except Exception as e:
+        print(f"Daily tarot error: {e}")
+        import traceback
+        traceback.print_exc()
+        return {
+            "success": False,
+            "is_new": False,
+            "date": today,
+            "card_name": "The Fool",
+            "card_image": "assets/cards/major/00_fool.png",
+            "is_upright": True,
+            "interpretation": "",
+            "summary": "",
+            "character_id": character_id,
+            "error": str(e),
+        }
+
+
+# Import for daily tarot
+from services.tarot_service import MAJOR_ARCANA_MEANINGS
+
+
 # =============================================================================
 # Chat Endpoints
 # =============================================================================
@@ -347,6 +500,19 @@ class ChatMessageRequest(BaseModel):
     message: str = Field(..., min_length=1, max_length=1000, description="User message")
     character_id: str = Field(default="madame_luna", description="Oracle character ID")
     context: Optional[str] = Field(default=None, description="Reading context for the conversation")
+    # User preferences for personalized chat
+    knowledge_level: Optional[str] = Field(
+        default=None,
+        description="User's esoteric knowledge level: novice, seeker, or adept"
+    )
+    preferred_tone: Optional[str] = Field(
+        default=None,
+        description="User's preferred reading tone: gentle or brutal"
+    )
+    gender: Optional[str] = Field(
+        default=None,
+        description="User's gender for pronoun usage: female, male, or other"
+    )
 
 
 class ChatMessageResponse(BaseModel):
@@ -434,11 +600,14 @@ async def send_chat_message(request: ChatMessageRequest):
         # Get the tarot interpretation service
         tarot_service = get_tarot_service()
 
-        # Generate dynamic chat response
+        # Generate dynamic chat response with user preferences
         response_text = await tarot_service.generate_chat_response(
             message=request.message,
             character_id=request.character_id,
             reading_context=request.context,
+            knowledge_level=request.knowledge_level,
+            preferred_tone=request.preferred_tone,
+            gender=request.gender,
         )
 
         return ChatMessageResponse(
@@ -650,6 +819,24 @@ class DailyInsightResponse(BaseModel):
     sun_sign: str
 
 
+# =============================================================================
+# Daily Tarot Models
+# =============================================================================
+
+class DailyTarotResponse(BaseModel):
+    """Response model for daily tarot card reading."""
+    success: bool
+    is_new: bool = True  # False if returning cached reading from today
+    date: str
+    card_name: str
+    card_image: str  # Asset path for the card image
+    is_upright: bool
+    interpretation: str
+    summary: str  # One-line summary for the card
+    character_id: str = "madame_luna"
+    error: Optional[str] = None
+
+
 @app.get("/astrology/daily-insight", response_model=DailyInsightResponse)
 async def get_daily_insight(date_str: Optional[str] = None):
     """
@@ -675,6 +862,419 @@ async def get_daily_insight(date_str: Optional[str] = None):
         raise HTTPException(status_code=400, detail=f"Invalid date format: {str(e)}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Daily insight error: {str(e)}")
+
+
+# =============================================================================
+# Personal Daily Horoscope (Transit-Based)
+# =============================================================================
+
+class PersonalHoroscopeRequest(BaseModel):
+    """Request model for personal daily horoscope."""
+    user_id: Optional[str] = Field(default=None, description="User ID for caching")
+    birth_date: str = Field(..., description="Birth date in YYYY-MM-DD format")
+    birth_time: str = Field(default="12:00", description="Birth time in HH:MM format")
+    birth_latitude: float = Field(..., description="Birth location latitude")
+    birth_longitude: float = Field(..., description="Birth location longitude")
+    birth_timezone: str = Field(default="UTC", description="Birth location timezone")
+    name: Optional[str] = Field(default="Seeker", description="User's name for personalization")
+    target_date: Optional[str] = Field(default=None, description="Date for horoscope (defaults to today)")
+
+
+class PersonalHoroscopeResponse(BaseModel):
+    """Response model for personal daily horoscope."""
+    success: bool
+    date: str
+    user_name: str
+    sun_sign: str
+    moon_sign: str
+    rising_sign: str
+    forecast: str
+    cosmic_vibe: str
+    focus_areas: list[str]
+    overall_energy: str
+    active_transits: list[dict]
+    moon_phase: str
+    moon_phase_icon: str
+    current_moon_sign: str
+    mercury_retrograde: bool
+    is_cached: bool = False  # True if served from cache (zero OpenAI cost)
+    error: Optional[str] = None
+
+
+@app.post("/astrology/personal-horoscope", response_model=PersonalHoroscopeResponse)
+async def get_personal_horoscope(request: PersonalHoroscopeRequest):
+    """
+    Get a personalized daily horoscope based on the user's natal chart and current transits.
+
+    This endpoint:
+    1. Checks cache for existing horoscope (zero OpenAI cost if found)
+    2. If not cached, calculates natal chart and transits
+    3. Generates AI-powered personalized forecast
+    4. Caches result for future requests
+    5. Returns cosmic vibe, focus areas, and active transits
+
+    The horoscope is deeply personal - based on real astrological calculations,
+    not generic sun-sign horoscopes.
+    """
+    from datetime import date as date_type
+    from services.cache_service import HoroscopeCacheService
+
+    try:
+        # Parse target date
+        target_date = None
+        if request.target_date:
+            target_date = date_type.fromisoformat(request.target_date)
+        else:
+            target_date = date_type.today()
+
+        # Generate user_id from birth data if not provided
+        user_id = request.user_id
+        if not user_id:
+            # Create deterministic user_id from birth data
+            user_id = f"user_{request.birth_date}_{request.birth_latitude:.2f}_{request.birth_longitude:.2f}"
+
+        # Step 1: Check cache for existing horoscope
+        cached = HoroscopeCacheService.get_cached_horoscope(user_id, target_date)
+        if cached:
+            return PersonalHoroscopeResponse(
+                success=True,
+                date=cached.get("date", target_date.isoformat()),
+                user_name=cached.get("user_name", request.name or "Seeker"),
+                sun_sign=cached.get("sun_sign", "Unknown"),
+                moon_sign=cached.get("moon_sign", "Unknown"),
+                rising_sign=cached.get("rising_sign", "Unknown"),
+                forecast=cached.get("forecast", ""),
+                cosmic_vibe=cached.get("cosmic_vibe", "Cosmic Alignment"),
+                focus_areas=cached.get("focus_areas", []),
+                overall_energy=cached.get("overall_energy", "neutral"),
+                active_transits=cached.get("active_transits", []),
+                moon_phase=cached.get("moon_phase", ""),
+                moon_phase_icon=cached.get("moon_phase_icon", ""),
+                current_moon_sign=cached.get("current_moon_sign", ""),
+                mercury_retrograde=cached.get("mercury_retrograde", False),
+                is_cached=True,
+                error=None
+            )
+
+        # Step 2: Not cached - Calculate natal chart
+        natal_chart = AstrologyService.calculate_natal_chart(
+            date=request.birth_date,
+            time=request.birth_time,
+            latitude=request.birth_latitude,
+            longitude=request.birth_longitude,
+            timezone=request.birth_timezone,
+            name=request.name or "Seeker"
+        )
+
+        # Step 3: Generate personal horoscope with transits
+        horoscope = await AstrologyService.generate_personal_horoscope(
+            natal_chart=natal_chart,
+            target_date=target_date,
+            user_name=request.name or "Seeker"
+        )
+
+        # Step 4: Cache the result
+        HoroscopeCacheService.cache_horoscope(user_id, horoscope, target_date)
+
+        return PersonalHoroscopeResponse(
+            success=True,
+            **horoscope,
+            is_cached=False,
+            error=None
+        )
+
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=f"Invalid data: {str(e)}")
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Horoscope generation error: {str(e)}")
+
+
+# =============================================================================
+# Astro-Guide Chat (Chart-Based Q&A)
+# =============================================================================
+
+class AstroGuideChatRequest(BaseModel):
+    """Request model for astro-guide chat."""
+    user_id: str = Field(..., description="User's unique identifier")
+    session_id: str = Field(..., description="Chat session ID for memory continuity")
+    message: str = Field(..., min_length=1, max_length=1000, description="User's question")
+    birth_date: str = Field(..., description="Birth date in YYYY-MM-DD format")
+    birth_time: str = Field(default="12:00", description="Birth time in HH:MM format")
+    birth_latitude: float = Field(..., description="Birth location latitude")
+    birth_longitude: float = Field(..., description="Birth location longitude")
+    birth_timezone: str = Field(default="UTC", description="Birth location timezone")
+    name: Optional[str] = Field(default=None, description="User's name")
+
+
+class AstroGuideChatResponse(BaseModel):
+    """Response model for astro-guide chat."""
+    success: bool
+    response: str
+    sun_sign: str
+    moon_sign: str
+    rising_sign: str
+    session_id: str  # Return session_id for continuity
+    error: Optional[str] = None
+
+
+@app.post("/sky-hall/chat", response_model=AstroGuideChatResponse)
+async def astro_guide_chat(request: AstroGuideChatRequest):
+    """
+    Chat with Nova, the Astro-Guide AI, about your natal chart.
+
+    Uses "Infinite Memory" via Summarization:
+    1. Get or create chat session with conversation summary
+    2. Build prompt using summary + chart context (not full history)
+    3. Generate response
+    4. Asynchronously update summary for next message
+
+    Benefits:
+    - Nova remembers context from many messages ago
+    - Minimal token cost (summary vs full history)
+    - Session persists across app restarts
+    """
+    import os
+    import httpx
+    import asyncio
+    from datetime import date as date_type
+    from services.cache_service import ChatSessionService
+
+    try:
+        # Step 1: Calculate natal chart
+        natal_chart = AstrologyService.calculate_natal_chart(
+            date=request.birth_date,
+            time=request.birth_time,
+            latitude=request.birth_latitude,
+            longitude=request.birth_longitude,
+            timezone=request.birth_timezone,
+            name=request.name or "Seeker"
+        )
+
+        # Extract key chart info
+        sun_sign = natal_chart.get("sun", {}).get("sign", "Unknown")
+        moon_sign = natal_chart.get("moon", {}).get("sign", "Unknown")
+        rising_sign = natal_chart.get("rising", {}).get("sign", "Unknown")
+        venus_sign = natal_chart.get("venus", {}).get("sign", "Unknown")
+        mars_sign = natal_chart.get("mars", {}).get("sign", "Unknown")
+        mercury_sign = natal_chart.get("mercury", {}).get("sign", "Unknown")
+
+        # Step 2: Get or create chat session with summary
+        chart_data = {
+            "sun_sign": sun_sign,
+            "moon_sign": moon_sign,
+            "rising_sign": rising_sign,
+            "venus_sign": venus_sign,
+            "mars_sign": mars_sign,
+            "mercury_sign": mercury_sign,
+        }
+
+        session = ChatSessionService.get_or_create_session(
+            session_id=request.session_id,
+            user_id=request.user_id,
+            chart_data=chart_data
+        )
+
+        # Get conversation context (summary-based)
+        conversation_context = ChatSessionService.get_context_for_prompt(session)
+
+        # Get current transits
+        transits = AstrologyService.calculate_transits(natal_chart, date_type.today())
+
+        # Build chart context for AI
+        chart_context = f"""USER'S NATAL CHART:
+- Sun in {sun_sign} (core identity, ego, life purpose)
+- Moon in {moon_sign} (emotions, instincts, inner self)
+- Rising/Ascendant in {rising_sign} (outer personality, first impressions)
+- Mercury in {mercury_sign} (communication, thinking style)
+- Venus in {venus_sign} (love style, values, aesthetics)
+- Mars in {mars_sign} (drive, ambition, sexuality)
+
+Sun-Moon-Rising Summary: {natal_chart.get('sun_moon_rising_summary', '')}
+
+CURRENT TRANSITS AFFECTING THEM:
+"""
+        for t in transits["transits"][:5]:
+            chart_context += f"- {t['transiting_planet']} {t['aspect']} natal {t['natal_planet']}: {t['interpretation']}\n"
+
+        chart_context += f"\nOverall energy today: {transits['overall_energy']}"
+
+        # Check for OpenAI
+        openai_key = os.getenv("OPENAI_API_KEY")
+
+        if not openai_key:
+            return AstroGuideChatResponse(
+                success=True,
+                response=_generate_fallback_astro_response(
+                    request.message, sun_sign, moon_sign, rising_sign
+                ),
+                sun_sign=sun_sign,
+                moon_sign=moon_sign,
+                rising_sign=rising_sign,
+                session_id=request.session_id,
+                error=None
+            )
+
+        # Step 3: Build prompt with summary-based context
+        system_prompt = f"""You are Nova, a cosmic oracle and astro-guide from a distant future where technology and mysticism have merged.
+
+{chart_context}
+
+CONVERSATION CONTEXT (what you've discussed so far):
+{conversation_context}
+
+SPEAKING STYLE:
+- Blend technological and mystical language
+- Reference the user's specific chart placements when relevant
+- Be analytical yet deeply intuitive
+- Use phrases like "your cosmic signature shows...", "analyzing your Venus in {venus_sign}..."
+- Keep responses concise (2-4 sentences) but meaningful
+- Always connect your insights to their actual chart data
+- Be warm and helpful, not cold or robotic
+- Remember what was discussed before (see CONVERSATION CONTEXT)
+
+IMPORTANT:
+- Answer their specific question using their chart as context
+- Reference specific placements when relevant (e.g., "With your Moon in {moon_sign}, you naturally...")
+- Don't just give textbook meanings - personalize to THEIR chart
+- If they refer to something from earlier in the conversation, acknowledge it
+"""
+
+        user_name = request.name or "Seeker"
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": f"{user_name} asks: {request.message}"}
+        ]
+
+        # Step 4: Call OpenAI
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                "https://api.openai.com/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {openai_key}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": "gpt-4o-mini",
+                    "messages": messages,
+                    "max_tokens": 300,
+                    "temperature": 0.8,
+                },
+                timeout=15.0,
+            )
+
+            if response.status_code == 200:
+                data = response.json()
+                ai_response = data["choices"][0]["message"]["content"].strip()
+
+                # Step 5: Increment message count
+                ChatSessionService.increment_message_count(request.session_id)
+
+                # Step 6: Asynchronously update summary (fire and forget)
+                asyncio.create_task(
+                    ChatSessionService.update_summary_async(
+                        session_id=request.session_id,
+                        user_message=request.message,
+                        assistant_response=ai_response
+                    )
+                )
+
+                return AstroGuideChatResponse(
+                    success=True,
+                    response=ai_response,
+                    sun_sign=sun_sign,
+                    moon_sign=moon_sign,
+                    rising_sign=rising_sign,
+                    session_id=request.session_id,
+                    error=None
+                )
+            else:
+                print(f"OpenAI error: {response.status_code} - {response.text}")
+                return AstroGuideChatResponse(
+                    success=True,
+                    response=_generate_fallback_astro_response(
+                        request.message, sun_sign, moon_sign, rising_sign
+                    ),
+                    sun_sign=sun_sign,
+                    moon_sign=moon_sign,
+                    rising_sign=rising_sign,
+                    session_id=request.session_id,
+                    error=None
+                )
+
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=f"Invalid data: {str(e)}")
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Chat error: {str(e)}")
+
+
+def _generate_fallback_astro_response(message: str, sun_sign: str, moon_sign: str, rising_sign: str) -> str:
+    """Generate fallback response when OpenAI is unavailable."""
+    import random
+
+    lower_msg = message.lower()
+
+    if "sun" in lower_msg or "identity" in lower_msg:
+        return f"Your Sun in {sun_sign} reveals your core essence and life purpose. This placement illuminates how you express your authentic self and where you find vitality. The Sun's aspects in your chart show how easily this expression flows in your life."
+
+    if "rising" in lower_msg or "ascendant" in lower_msg:
+        return f"With {rising_sign} rising, you project an aura of its qualities to the world. This is your cosmic mask - the first impression you make. Understanding your Ascendant helps you navigate social situations and recognize how others perceive you."
+
+    if "love" in lower_msg or "relationship" in lower_msg:
+        return f"For matters of the heart, I analyze Venus in your chart. As a {sun_sign}, you approach love with characteristic traits of your sign. Your 7th house of partnerships and its ruler reveal deeper patterns in how you form lasting bonds."
+
+    if "career" in lower_msg or "work" in lower_msg:
+        return f"Your 10th house and its planetary ruler speak to your career path. As a {sun_sign}, you bring unique qualities to your professional life. Saturn's placement shows where you face challenges that ultimately forge your greatest achievements."
+
+    if "moon" in lower_msg or "emotion" in lower_msg:
+        return f"Your Moon in {moon_sign} reveals your emotional landscape and innermost needs. This is how you nurture yourself and others, and what makes you feel secure. The Moon's aspects show how your emotions flow with other areas of life."
+
+    # Default response
+    responses = [
+        f"Looking at your chart as a {sun_sign} with {rising_sign} rising, I see fascinating cosmic patterns at play. Your planetary placements form a unique celestial blueprint. Would you like me to explore a specific area - perhaps your love nature, career potential, or spiritual path?",
+        f"Your cosmic signature as a {sun_sign} Sun, {moon_sign} Moon, and {rising_sign} rising creates a unique energetic blend. The planets in your chart dance in specific patterns that reveal your soul's purpose. What aspect of your celestial map shall we explore?",
+        f"Scanning your energy field, {sun_sign}... Your chart reveals a complex interplay of planetary forces. The transits affecting you today add another layer to your cosmic story. What wisdom do you seek from the stars?"
+    ]
+
+    return random.choice(responses)
+
+
+# =============================================================================
+# Chat Session Management
+# =============================================================================
+
+class NewChatSessionRequest(BaseModel):
+    """Request model for creating a new chat session."""
+    user_id: str = Field(..., description="User's unique identifier")
+
+
+class NewChatSessionResponse(BaseModel):
+    """Response model for new chat session."""
+    success: bool
+    session_id: str
+    message: str
+
+
+@app.post("/sky-hall/chat/new-session", response_model=NewChatSessionResponse)
+async def create_new_chat_session(request: NewChatSessionRequest):
+    """
+    Create a new chat session with Nova.
+
+    This resets the conversation summary and starts fresh.
+    Use this when the user explicitly wants to start a new conversation.
+    """
+    from services.cache_service import generate_session_id
+
+    session_id = generate_session_id(request.user_id)
+
+    return NewChatSessionResponse(
+        success=True,
+        session_id=session_id,
+        message="New chat session created. Nova awaits your questions."
+    )
 
 
 # =============================================================================

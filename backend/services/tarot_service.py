@@ -1,12 +1,71 @@
 """
 Tarot Interpretation Service
 Dynamic tarot card interpretation using OpenAI GPT-4o-mini.
-Supports character-based personalities and context-aware readings.
+Supports character-based personalities, context-aware readings,
+and personalized user preferences for knowledge level and tone.
 """
 
 import os
 from typing import Optional
 from openai import OpenAI, OpenAIError
+
+
+# =============================================================================
+# User Preference Configurations
+# =============================================================================
+
+KNOWLEDGE_LEVEL_INSTRUCTIONS = {
+    "novice": """The user is a NOVICE to the mystic arts.
+- Explain any astrological or tarot terminology in simple terms
+- Avoid jargon like "aspects", "houses", "transits" without explanation
+- Use relatable metaphors and everyday language
+- Be welcoming and encouraging to their spiritual journey""",
+
+    "seeker": """The user is a SEEKER with moderate mystical knowledge.
+- They know basic concepts like Sun signs and major arcana meanings
+- Balance accessible language with some astrological terminology
+- You can reference planets and elements without lengthy explanations
+- Build on their existing knowledge""",
+
+    "adept": """The user is an ADEPT who speaks the language of the stars.
+- Use full astrological terminology: aspects, houses, transits, dignities
+- Provide deep symbolic analysis and esoteric connections
+- Reference planetary rulerships, elemental correspondences, numerology
+- They appreciate complex, layered interpretations""",
+}
+
+PREFERRED_TONE_INSTRUCTIONS = {
+    "gentle": """The user prefers GENTLE LIGHT readings.
+- Focus on hope, possibilities, and the light within every situation
+- Emphasize growth opportunities and positive potentials
+- Be compassionate, uplifting, and supportive
+- Frame challenges as opportunities for growth
+- End with encouragement and hope""",
+
+    "brutal": """The user prefers BRUTAL TRUTH readings.
+- Do NOT sugarcoat anything - be direct and unvarnished
+- Focus on shadow work, hard realities, and uncomfortable truths
+- Challenge the seeker to face what they've been avoiding
+- Point out patterns and blind spots without softening
+- Be honest even when it's difficult to hear""",
+}
+
+GENDER_PRONOUN_INSTRUCTIONS = {
+    "female": """The seeker identifies as FEMALE.
+- Use she/her pronouns when referring to the seeker in third person
+- When addressing relationships, use appropriate gendered language (e.g., "your partner", "a man in your life")
+- Frame feminine archetypes naturally (Empress, High Priestess, Queen cards)""",
+
+    "male": """The seeker identifies as MALE.
+- Use he/him pronouns when referring to the seeker in third person
+- When addressing relationships, use appropriate gendered language (e.g., "your partner", "a woman in your life")
+- Frame masculine archetypes naturally (Emperor, Magician, King cards)""",
+
+    "other": """The seeker identifies as NON-BINARY or OTHER.
+- Use they/them pronouns when referring to the seeker in third person
+- Use gender-neutral language for relationships (e.g., "your partner", "someone special")
+- Frame archetypes in terms of energy and essence rather than gendered roles""",
+}
 
 
 # =============================================================================
@@ -220,6 +279,42 @@ class TarotInterpretationService:
     def is_configured(self) -> bool:
         return self.client is not None
 
+    def build_preference_instructions(
+        self,
+        knowledge_level: Optional[str] = None,
+        preferred_tone: Optional[str] = None,
+        gender: Optional[str] = None,
+    ) -> str:
+        """
+        Build personalized instruction block based on user preferences.
+
+        Args:
+            knowledge_level: User's esoteric knowledge level (novice, seeker, adept)
+            preferred_tone: User's preferred reading tone (gentle, brutal)
+            gender: User's gender for pronoun usage (female, male, other)
+
+        Returns:
+            A formatted instruction string to inject into the system prompt
+        """
+        instructions = []
+
+        # Add gender/pronoun instructions
+        if gender and gender in GENDER_PRONOUN_INSTRUCTIONS:
+            instructions.append(GENDER_PRONOUN_INSTRUCTIONS[gender])
+
+        # Add knowledge level instructions
+        if knowledge_level and knowledge_level in KNOWLEDGE_LEVEL_INSTRUCTIONS:
+            instructions.append(KNOWLEDGE_LEVEL_INSTRUCTIONS[knowledge_level])
+
+        # Add tone instructions
+        if preferred_tone and preferred_tone in PREFERRED_TONE_INSTRUCTIONS:
+            instructions.append(PREFERRED_TONE_INSTRUCTIONS[preferred_tone])
+
+        if instructions:
+            return "\n\n=== USER PREFERENCES ===\n" + "\n\n".join(instructions)
+
+        return ""
+
     def get_card_context(self, card_name: str, is_upright: bool) -> str:
         """Get the meaning context for a card based on orientation."""
         card_data = MAJOR_ARCANA_MEANINGS.get(card_name, {})
@@ -246,6 +341,9 @@ Focus on: {focus}"""
         card_name: str,
         is_upright: bool,
         character_id: str = "madame_luna",
+        knowledge_level: Optional[str] = None,
+        preferred_tone: Optional[str] = None,
+        gender: Optional[str] = None,
     ) -> str:
         """
         Generate a dynamic tarot reading interpretation using OpenAI.
@@ -255,6 +353,9 @@ Focus on: {focus}"""
             card_name: Name of the drawn card
             is_upright: Whether the card is upright or reversed
             character_id: The character providing the reading
+            knowledge_level: User's esoteric knowledge level (novice, seeker, adept)
+            preferred_tone: User's preferred reading tone (gentle, brutal)
+            gender: User's gender for pronoun usage (female, male, other)
 
         Returns:
             The interpretation text
@@ -269,6 +370,16 @@ Focus on: {focus}"""
                 CHARACTER_SYSTEM_PROMPTS["madame_luna"]
             )
 
+            # Build personalized system prompt with user preferences
+            system_prompt = character["system_prompt"]
+            preference_instructions = self.build_preference_instructions(
+                knowledge_level=knowledge_level,
+                preferred_tone=preferred_tone,
+                gender=gender,
+            )
+            if preference_instructions:
+                system_prompt += preference_instructions
+
             # Get card context
             card_context = self.get_card_context(card_name, is_upright)
             position_text = "Upright" if is_upright else "Reversed"
@@ -280,29 +391,48 @@ Focus on: {focus}"""
             else:
                 reading_type = "Personal Reading"
 
-            # Build the user prompt
-            user_prompt = f"""The seeker asks: "{question}"
+            # Build the user prompt with contextual instruction
+            user_prompt = f"""The User asks: "{question}"
+
+The Card drawn is: {card_name} ({position_text})
 
 {card_context}
 
 Reading Type: {reading_type}
 
-Interpret this {card_name} card specifically for their question.
-- If Upright: Focus on the card's light aspects, opportunities, and positive energies
-- If Reversed: Focus on the blocked energy, internal challenges, or shadow aspects
+=== CRITICAL INSTRUCTION ===
+Do NOT give a generic definition of the card.
+Instead, ANSWER THE USER'S SPECIFIC QUESTION using the card's symbolism as your lens.
+
+Example of what NOT to do:
+- User asks: "Does he love me?"
+- Card: The Tower
+- BAD response: "The Tower represents sudden upheaval and destruction of old structures."
+
+Example of what TO DO:
+- User asks: "Does he love me?"
+- Card: The Tower
+- GOOD response: "In the context of your question about his feelings, The Tower suggests a sudden revelation may be coming - perhaps he will show his true feelings in an unexpected way, or hidden truths about the relationship will surface that change everything."
+
+=== YOUR TASK ===
+1. Read the user's specific question carefully
+2. Use the card's energy to DIRECTLY ANSWER their question
+3. Frame your response around their situation, not the card's textbook meaning
+4. Be mystical but personally relevant - speak TO their situation
 
 Guidelines:
 - Keep your response to 2-3 sentences maximum
-- Be mystical but directly relevant to their question
-- Stay completely in character
-- Do not explain what the card generally means - interpret it FOR them
-- Address them directly using your character's style"""
+- Stay completely in character with your speaking style
+- Address them directly using your character's terms of endearment
+- If the question is about love/relationships, speak to that context
+- If the question is about career/money, speak to that context
+- If the question is about decisions, help them decide"""
 
             # Call OpenAI
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=[
-                    {"role": "system", "content": character["system_prompt"]},
+                    {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt}
                 ],
                 max_tokens=200,
@@ -318,12 +448,106 @@ Guidelines:
             print(f"Interpretation error: {e}")
             return self._generate_fallback_reading(question, card_name, is_upright, character_id)
 
+    async def generate_daily_reading(
+        self,
+        card_name: str,
+        is_upright: bool,
+        character_id: str = "madame_luna",
+    ) -> str:
+        """
+        Generate a daily card reading interpretation.
+
+        This is a special reading that doesn't require a question from the user.
+        It provides general guidance for the day based on the drawn card.
+
+        Args:
+            card_name: Name of the drawn card
+            is_upright: Whether the card is upright or reversed
+            character_id: The character providing the reading
+
+        Returns:
+            The daily reading interpretation text
+        """
+        if not self.is_configured:
+            return self._generate_fallback_daily(card_name, is_upright, character_id)
+
+        try:
+            # Get character personality
+            character = CHARACTER_SYSTEM_PROMPTS.get(
+                character_id,
+                CHARACTER_SYSTEM_PROMPTS["madame_luna"]
+            )
+
+            # Build system prompt for daily reading
+            system_prompt = f"""{character["system_prompt"]}
+
+IMPORTANT: This is a DAILY CARD reading - no question was asked.
+Provide brief, general advice about what energy to expect today.
+Focus on mindfulness, opportunities, and practical guidance.
+Keep it concise (2-3 sentences max)."""
+
+            # Get card context
+            card_context = self.get_card_context(card_name, is_upright)
+            position_text = "Upright" if is_upright else "Reversed"
+
+            user_prompt = f"""The seeker has drawn their Card of the Day.
+
+{card_context}
+
+This is a daily guidance reading - no specific question was asked.
+Give brief, general advice about the energy of the day based on this card.
+What should they be mindful of? What opportunities might arise?
+Keep it mystical but practical, 2-3 sentences maximum."""
+
+            # Call OpenAI
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt}
+                ],
+                max_tokens=150,
+                temperature=0.8,
+            )
+
+            return response.choices[0].message.content.strip()
+
+        except OpenAIError as e:
+            print(f"OpenAI API error (daily): {e}")
+            return self._generate_fallback_daily(card_name, is_upright, character_id)
+        except Exception as e:
+            print(f"Daily reading error: {e}")
+            return self._generate_fallback_daily(card_name, is_upright, character_id)
+
+    def _generate_fallback_daily(
+        self,
+        card_name: str,
+        is_upright: bool,
+        character_id: str,
+    ) -> str:
+        """Generate a fallback daily reading when OpenAI is unavailable."""
+        card_data = MAJOR_ARCANA_MEANINGS.get(card_name, {})
+        keywords = card_data.get("keywords", ["transformation", "insight"])
+        position = "upright" if is_upright else "reversed"
+
+        fallbacks = {
+            "madame_luna": f"Dear one, {card_name} graces your day {position}. The cosmos whispers of {', '.join(keywords[:2])}. Let this energy guide your steps today.",
+            "shadow": f"{card_name} ({position}) shows itself. Today demands awareness of {keywords[0] if keywords else 'truth'}. No excuses.",
+            "elder_weiss": f"The ancient {card_name} appears {position} this day. It speaks of {', '.join(keywords[:2])}. Reflect on this wisdom as you walk your path.",
+            "nova": f"Daily scan complete: {card_name} ({position}). Energy signature indicates {', '.join(keywords[:2])}. Calibrate your frequency accordingly.",
+        }
+
+        return fallbacks.get(character_id, fallbacks["madame_luna"])
+
     async def generate_chat_response(
         self,
         message: str,
         character_id: str,
         reading_context: Optional[str] = None,
         conversation_history: Optional[list] = None,
+        knowledge_level: Optional[str] = None,
+        preferred_tone: Optional[str] = None,
+        gender: Optional[str] = None,
     ) -> str:
         """
         Generate a chat response from the Oracle character.
@@ -333,6 +557,9 @@ Guidelines:
             character_id: The Oracle character ID
             reading_context: Optional context from a tarot reading
             conversation_history: Optional list of previous messages
+            knowledge_level: User's esoteric knowledge level (novice, seeker, adept)
+            preferred_tone: User's preferred reading tone (gentle, brutal)
+            gender: User's gender for pronoun usage (female, male, other)
 
         Returns:
             The Oracle's response
@@ -346,8 +573,19 @@ Guidelines:
                 CHARACTER_SYSTEM_PROMPTS["madame_luna"]
             )
 
-            # Build system prompt with context
+            # Build system prompt with user preferences
             system_prompt = character["system_prompt"]
+
+            # Add user preference instructions
+            preference_instructions = self.build_preference_instructions(
+                knowledge_level=knowledge_level,
+                preferred_tone=preferred_tone,
+                gender=gender,
+            )
+            if preference_instructions:
+                system_prompt += preference_instructions
+
+            # Add reading context if available
             if reading_context:
                 system_prompt += f"""
 

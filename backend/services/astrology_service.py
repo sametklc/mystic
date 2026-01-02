@@ -1196,3 +1196,370 @@ You are a mystic oracle. Give ONE sentence of esoteric, poetic advice for today 
             "advice": advice,
             "sun_sign": sky_data["sun_sign"],
         }
+
+    # =========================================================================
+    # Transit Calculation Methods for Daily Personal Horoscope
+    # =========================================================================
+
+    @staticmethod
+    def calculate_transits(natal_chart: dict, target_date: date = None) -> dict:
+        """
+        Calculate current planetary transits relative to natal chart positions.
+
+        Compares current sky positions to natal placements to identify
+        active transits affecting the user today.
+
+        Args:
+            natal_chart: User's natal chart data
+            target_date: Date to calculate transits for (defaults to today)
+
+        Returns:
+            Dictionary with transit aspects, active energies, and focus areas
+        """
+        if target_date is None:
+            target_date = date.today()
+
+        # Get current sky positions
+        current_sky = AstrologyService.get_current_sky_data(target_date)
+
+        # Create current moment subject for aspect calculation
+        current_subject = AstrologyService.create_subject(
+            name="Current Sky",
+            year=target_date.year,
+            month=target_date.month,
+            day=target_date.day,
+            hour=12,
+            minute=0,
+            latitude=0.0,
+            longitude=0.0,
+            timezone="UTC"
+        )
+
+        # Calculate transit aspects to natal positions
+        transit_aspects = []
+        natal_planets = ["sun", "moon", "mercury", "venus", "mars", "jupiter", "saturn"]
+        transit_planets = ["sun", "moon", "mercury", "venus", "mars"]
+
+        aspect_angles = {
+            "conjunction": (0, 8),
+            "sextile": (60, 5),
+            "square": (90, 6),
+            "trine": (120, 7),
+            "opposition": (180, 8),
+        }
+
+        # Get current planet positions from subject
+        current_positions = {}
+        for planet in transit_planets:
+            planet_data = AstrologyService.get_planet_data(current_subject, planet)
+            if planet_data:
+                current_positions[planet] = planet_data.get("degree", 0)
+
+        # Calculate aspects between transiting and natal planets
+        for transit_planet in transit_planets:
+            if transit_planet not in current_positions:
+                continue
+            transit_degree = current_positions[transit_planet]
+
+            for natal_planet in natal_planets:
+                natal_data = natal_chart.get(natal_planet)
+                if not natal_data:
+                    continue
+                natal_degree = natal_data.get("degree", 0)
+
+                # Calculate angular difference
+                diff = abs(transit_degree - natal_degree)
+                if diff > 180:
+                    diff = 360 - diff
+
+                # Check for aspects
+                for aspect_name, (angle, orb) in aspect_angles.items():
+                    if abs(diff - angle) <= orb:
+                        harmony = ASPECT_HARMONY.get(aspect_name, 0)
+                        transit_aspects.append({
+                            "transiting_planet": transit_planet.capitalize(),
+                            "natal_planet": natal_data.get("planet_name", natal_planet.capitalize()),
+                            "natal_sign": natal_data.get("sign", "Unknown"),
+                            "aspect": aspect_name,
+                            "aspect_symbol": ASPECT_SYMBOLS.get(aspect_name, "?"),
+                            "orb": round(abs(diff - angle), 1),
+                            "harmony": harmony,
+                            "is_harmonious": harmony > 0,
+                            "interpretation": AstrologyService.get_transit_interpretation(
+                                transit_planet.capitalize(),
+                                natal_data.get("planet_name", natal_planet.capitalize()),
+                                aspect_name
+                            )
+                        })
+                        break
+
+        # Sort by tightest orb (most exact aspects first)
+        transit_aspects.sort(key=lambda x: x["orb"])
+
+        # Determine focus areas based on active transits
+        focus_areas = AstrologyService.determine_focus_areas(transit_aspects)
+
+        # Calculate overall transit energy (harmony score)
+        total_harmony = sum(a["harmony"] for a in transit_aspects)
+        if len(transit_aspects) > 0:
+            avg_harmony = total_harmony / len(transit_aspects)
+        else:
+            avg_harmony = 0
+
+        energy_type = "harmonious" if avg_harmony > 0 else "challenging" if avg_harmony < 0 else "neutral"
+
+        return {
+            "date": target_date.isoformat(),
+            "transits": transit_aspects[:10],  # Top 10 most relevant
+            "focus_areas": focus_areas,
+            "overall_energy": energy_type,
+            "harmony_score": round(avg_harmony, 2),
+            "current_moon_phase": current_sky["moon_phase"],
+            "current_moon_sign": current_sky["moon_sign"],
+        }
+
+    @staticmethod
+    def get_transit_interpretation(transit_planet: str, natal_planet: str, aspect: str) -> str:
+        """Get interpretation for a transit aspect."""
+        aspect_verbs = {
+            "conjunction": "merges with",
+            "trine": "harmonizes with",
+            "sextile": "supports",
+            "square": "challenges",
+            "opposition": "opposes",
+        }
+        verb = aspect_verbs.get(aspect, "aspects")
+
+        # Specific transit interpretations
+        special_transits = {
+            ("Sun", "Sun", "conjunction"): "Your solar return approaches - a powerful time for self-renewal.",
+            ("Moon", "Moon", "conjunction"): "Emotional currents align with your deepest needs today.",
+            ("Venus", "Venus", "conjunction"): "Love and pleasure are heightened. Embrace beauty.",
+            ("Mars", "Mars", "conjunction"): "Your energy peaks. Channel this fire constructively.",
+            ("Mercury", "Mercury", "conjunction"): "Mental clarity sharpens. Communication flows easily.",
+            ("Sun", "Moon", "trine"): "Your will and emotions flow harmoniously today.",
+            ("Venus", "Mars", "trine"): "Passion and romance are favored. Act on desires.",
+            ("Moon", "Venus", "conjunction"): "Emotional sensitivity meets beauty. Perfect for self-care.",
+            ("Mars", "Sun", "square"): "Friction between action and identity. Stay patient.",
+            ("Saturn", "Sun", "square"): "Responsibilities weigh heavy. Structure brings freedom.",
+        }
+
+        key = (transit_planet, natal_planet, aspect)
+        if key in special_transits:
+            return special_transits[key]
+
+        # Default interpretation
+        return f"Transiting {transit_planet} {verb} your natal {natal_planet}."
+
+    @staticmethod
+    def determine_focus_areas(transits: list) -> list:
+        """Determine life areas to focus on based on active transits."""
+        focus_areas = set()
+
+        planet_areas = {
+            "Sun": ["identity", "vitality", "purpose"],
+            "Moon": ["emotions", "home", "intuition"],
+            "Mercury": ["communication", "learning", "travel"],
+            "Venus": ["love", "beauty", "values"],
+            "Mars": ["action", "energy", "ambition"],
+            "Jupiter": ["expansion", "luck", "wisdom"],
+            "Saturn": ["discipline", "responsibility", "structure"],
+        }
+
+        for transit in transits[:5]:  # Top 5 transits
+            natal_planet = transit.get("natal_planet", "")
+            if natal_planet in planet_areas:
+                focus_areas.update(planet_areas[natal_planet][:2])
+
+        return list(focus_areas)[:5]  # Return top 5 focus areas
+
+    @staticmethod
+    async def generate_personal_horoscope(
+        natal_chart: dict,
+        target_date: date = None,
+        user_name: str = "Seeker"
+    ) -> dict:
+        """
+        Generate a personalized daily horoscope based on transits to natal chart.
+
+        Uses OpenAI to create a mystical interpretation of the current
+        planetary influences on the user's personal chart.
+
+        Args:
+            natal_chart: User's natal chart data
+            target_date: Date for the horoscope (defaults to today)
+            user_name: User's name for personalization
+
+        Returns:
+            Complete daily horoscope with forecast, transits, and guidance
+        """
+        import os
+
+        if target_date is None:
+            target_date = date.today()
+
+        # Calculate transits
+        transits = AstrologyService.calculate_transits(natal_chart, target_date)
+
+        # Get current sky data
+        sky_data = AstrologyService.get_current_sky_data(target_date)
+
+        # Extract Big Three for context
+        sun_sign = natal_chart.get("sun", {}).get("sign", "Unknown")
+        moon_sign = natal_chart.get("moon", {}).get("sign", "Unknown")
+        rising_sign = natal_chart.get("rising", {}).get("sign", "Unknown")
+
+        # Generate AI interpretation
+        openai_key = os.getenv("OPENAI_API_KEY")
+
+        if openai_key:
+            forecast = await AstrologyService._generate_ai_horoscope(
+                sun_sign=sun_sign,
+                moon_sign=moon_sign,
+                rising_sign=rising_sign,
+                transits=transits,
+                sky_data=sky_data,
+                user_name=user_name
+            )
+        else:
+            forecast = AstrologyService._generate_fallback_horoscope(
+                sun_sign=sun_sign,
+                transits=transits,
+                sky_data=sky_data
+            )
+
+        # Build response
+        return {
+            "date": target_date.isoformat(),
+            "user_name": user_name,
+            "sun_sign": sun_sign,
+            "moon_sign": moon_sign,
+            "rising_sign": rising_sign,
+            "forecast": forecast,
+            "cosmic_vibe": AstrologyService._get_cosmic_vibe(sun_sign, transits),
+            "focus_areas": transits["focus_areas"],
+            "overall_energy": transits["overall_energy"],
+            "active_transits": transits["transits"][:5],
+            "moon_phase": sky_data["moon_phase"]["name"],
+            "moon_phase_icon": sky_data["moon_phase"]["icon"],
+            "current_moon_sign": sky_data["moon_sign"],
+            "mercury_retrograde": sky_data["mercury_status"]["is_retrograde"],
+        }
+
+    @staticmethod
+    async def _generate_ai_horoscope(
+        sun_sign: str,
+        moon_sign: str,
+        rising_sign: str,
+        transits: dict,
+        sky_data: dict,
+        user_name: str
+    ) -> str:
+        """Generate AI-powered personal horoscope."""
+        import httpx
+        import os
+
+        openai_key = os.getenv("OPENAI_API_KEY")
+
+        # Build transit context
+        transit_text = ""
+        for t in transits["transits"][:5]:
+            transit_text += f"- {t['transiting_planet']} {t['aspect']} natal {t['natal_planet']}: {t['interpretation']}\n"
+
+        prompt = f"""Create a personalized daily horoscope for {user_name}.
+
+NATAL CHART:
+- Sun in {sun_sign} (core identity)
+- Moon in {moon_sign} (emotional nature)
+- Rising in {rising_sign} (how world sees them)
+
+TODAY'S TRANSITS TO THEIR CHART:
+{transit_text}
+
+COSMIC WEATHER:
+- Moon Phase: {sky_data['moon_phase']['name']}
+- Moon in: {sky_data['moon_sign']}
+- Mercury: {sky_data['mercury_status']['status']}
+
+Write a 3-4 sentence mystical horoscope that:
+1. Addresses their specific sun sign energy today
+2. References the most significant transit affecting them
+3. Gives practical mystical guidance for the day
+4. Feels personal, not generic
+
+Use an intimate, oracle-like voice. No emojis."""
+
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    "https://api.openai.com/v1/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {openai_key}",
+                        "Content-Type": "application/json",
+                    },
+                    json={
+                        "model": "gpt-4o-mini",
+                        "messages": [
+                            {
+                                "role": "system",
+                                "content": "You are Nova, a cosmic oracle who blends astrological wisdom with personal guidance. Speak with warmth and mystical authority."
+                            },
+                            {"role": "user", "content": prompt}
+                        ],
+                        "max_tokens": 250,
+                        "temperature": 0.8,
+                    },
+                    timeout=15.0,
+                )
+
+                if response.status_code == 200:
+                    data = response.json()
+                    return data["choices"][0]["message"]["content"].strip()
+
+        except Exception as e:
+            print(f"AI horoscope generation error: {e}")
+
+        return AstrologyService._generate_fallback_horoscope(sun_sign, transits, sky_data)
+
+    @staticmethod
+    def _generate_fallback_horoscope(sun_sign: str, transits: dict, sky_data: dict) -> str:
+        """Generate fallback horoscope when AI is unavailable."""
+        moon_phase = sky_data["moon_phase"]["name"]
+        energy = transits["overall_energy"]
+        focus = ", ".join(transits["focus_areas"][:2]) if transits["focus_areas"] else "inner reflection"
+
+        base_messages = {
+            "harmonious": f"The stars smile upon you today, {sun_sign}. Cosmic currents flow in your favor, especially around {focus}. The {moon_phase} amplifies your natural gifts - trust where they lead you.",
+            "challenging": f"Today brings growth through challenge, {sun_sign}. The cosmos asks you to stretch beyond comfort, particularly regarding {focus}. The {moon_phase} reminds you that pressure creates diamonds.",
+            "neutral": f"A day of balance awaits you, {sun_sign}. Neither pushed nor pulled, you have space to choose your own adventure. Focus on {focus} - the {moon_phase} supports deliberate action.",
+        }
+
+        return base_messages.get(energy, base_messages["neutral"])
+
+    @staticmethod
+    def _get_cosmic_vibe(sun_sign: str, transits: dict) -> str:
+        """Generate today's cosmic vibe based on sign and transits."""
+        vibes = {
+            "Aries": "Bold Action",
+            "Taurus": "Grounded Growth",
+            "Gemini": "Mental Clarity",
+            "Cancer": "Emotional Depth",
+            "Leo": "Creative Fire",
+            "Virgo": "Precise Focus",
+            "Libra": "Harmonious Balance",
+            "Scorpio": "Deep Transformation",
+            "Sagittarius": "Expansive Vision",
+            "Capricorn": "Structured Ambition",
+            "Aquarius": "Innovative Thinking",
+            "Pisces": "Intuitive Flow",
+        }
+
+        base_vibe = vibes.get(sun_sign, "Cosmic Alignment")
+
+        # Modify based on transit energy
+        if transits["overall_energy"] == "challenging":
+            modifiers = ["Through Challenge", "Under Pressure", "Rising Strong"]
+            import random
+            return f"{base_vibe} {random.choice(modifiers)}"
+
+        return base_vibe
