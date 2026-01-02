@@ -82,7 +82,7 @@ HOUSE_NAME_TO_NUMBER = {
     "Tenth_House": 10, "Eleventh_House": 11, "Twelfth_House": 12
 }
 
-# Planet interpretations by sign
+# Planet interpretations by sign (complete for all planets)
 PLANET_SIGN_INTERPRETATIONS = {
     "Sun": {
         "Ari": "You are a natural leader with pioneering spirit and courage.",
@@ -112,6 +112,20 @@ PLANET_SIGN_INTERPRETATIONS = {
         "Aqu": "You process emotions intellectually and need independence.",
         "Pis": "You are deeply empathic and spiritually sensitive."
     },
+    "Mercury": {
+        "Ari": "Your mind is quick, direct, and loves a mental challenge.",
+        "Tau": "You think methodically and communicate with deliberation.",
+        "Gem": "Your mind is brilliantly versatile and endlessly curious.",
+        "Can": "You think with emotional intelligence and intuitive insight.",
+        "Leo": "You express ideas with dramatic flair and creative vision.",
+        "Vir": "Your analytical mind excels at precision and problem-solving.",
+        "Lib": "You seek mental balance and diplomatic communication.",
+        "Sco": "Your mind probes deep, seeking hidden truths and mysteries.",
+        "Sag": "Your thinking is philosophical, expansive, and truth-seeking.",
+        "Cap": "You communicate with authority and strategic planning.",
+        "Aqu": "Your mind is innovative, eccentric, and ahead of its time.",
+        "Pis": "Your thoughts flow intuitively, blending logic with imagination."
+    },
     "Venus": {
         "Ari": "You love the thrill of the chase and passionate connections.",
         "Tau": "You seek loyal, sensual, and stable love.",
@@ -139,6 +153,234 @@ PLANET_SIGN_INTERPRETATIONS = {
         "Cap": "Your ambition is disciplined and goal-oriented.",
         "Aqu": "Your energy is innovative and rebellious.",
         "Pis": "Your drive is inspired by dreams and compassion."
+    },
+    "Jupiter": {
+        "Ari": "You find luck through bold initiatives and courageous action.",
+        "Tau": "Abundance flows when you embrace patience and material wisdom.",
+        "Gem": "Growth comes through learning, teaching, and sharing ideas.",
+        "Can": "Your blessings multiply through nurturing and family bonds.",
+        "Leo": "Fortune favors your creative self-expression and generosity.",
+        "Vir": "Success comes through service, health, and practical wisdom.",
+        "Lib": "You expand through partnerships and harmonious connections.",
+        "Sco": "Transformation and deep truths bring you spiritual wealth.",
+        "Sag": "You are naturally blessed with optimism and philosophical insight.",
+        "Cap": "Your achievements grow through discipline and lasting structures.",
+        "Aqu": "Progress comes through innovation and humanitarian vision.",
+        "Pis": "Your soul expands through compassion and spiritual surrender."
+    },
+    "Saturn": {
+        "Ari": "Your life lessons involve mastering patience within action.",
+        "Tau": "You learn through building lasting material security.",
+        "Gem": "Discipline in communication brings your greatest growth.",
+        "Can": "Your karmic work involves emotional boundaries and family.",
+        "Leo": "You mature by learning humility within self-expression.",
+        "Vir": "Perfection through service is your path to mastery.",
+        "Lib": "Your growth comes through committed relationships.",
+        "Sco": "Transformation through facing your shadows brings power.",
+        "Sag": "Wisdom comes from grounding your philosophical ideals.",
+        "Cap": "You have natural mastery over structure and achievement.",
+        "Aqu": "Your challenges involve balancing freedom with responsibility.",
+        "Pis": "Your soul work involves setting spiritual boundaries."
+    },
+    "Uranus": {
+        "Ari": "You revolutionize through bold, pioneering action.",
+        "Tau": "Your breakthroughs transform material and financial structures.",
+        "Gem": "Your genius expresses through revolutionary communication.",
+        "Can": "You bring change to home, family, and emotional patterns.",
+        "Leo": "Your uniqueness shines through creative rebellion.",
+        "Vir": "You innovate in health, work, and practical systems.",
+        "Lib": "Your liberation comes through transforming relationships.",
+        "Sco": "You awaken through psychological and spiritual revolution.",
+        "Sag": "Your freedom expands through unconventional beliefs.",
+        "Cap": "You revolutionize structures, institutions, and traditions.",
+        "Aqu": "You embody the spirit of innovation and collective awakening.",
+        "Pis": "Your intuition channels cosmic downloads and spiritual awakening."
+    },
+    "Neptune": {
+        "Ari": "Your spiritual path involves inspired action and divine courage.",
+        "Tau": "You find transcendence through sensory beauty and nature.",
+        "Gem": "Your imagination weaves dreams into words and ideas.",
+        "Can": "Your soul connects through emotional and psychic sensitivity.",
+        "Leo": "Your creativity channels divine inspiration and glamour.",
+        "Vir": "You serve as a vessel for healing and compassionate action.",
+        "Lib": "Your idealism seeks perfect love and artistic beauty.",
+        "Sco": "You dissolve boundaries to touch the depths of the soul.",
+        "Sag": "Your spirit seeks universal truth and divine adventure.",
+        "Cap": "You dream of building structures that serve the collective.",
+        "Aqu": "Your vision sees utopian possibilities for humanity.",
+        "Pis": "You are deeply connected to the cosmic ocean of consciousness."
+    },
+    "Pluto": {
+        "Ari": "Your power transforms through courageous self-reinvention.",
+        "Tau": "You undergo deep transformation around values and resources.",
+        "Gem": "Your psychology transforms through communication and ideas.",
+        "Can": "Your soul work involves deep family and emotional healing.",
+        "Leo": "Your transformation comes through creative death and rebirth.",
+        "Vir": "You purify through intense service and healing work.",
+        "Lib": "Your relationships catalyze profound soul transformation.",
+        "Sco": "You hold the power of complete psychological rebirth.",
+        "Sag": "Your beliefs undergo radical transformation and expansion.",
+        "Cap": "You transform power structures and societal foundations.",
+        "Aqu": "Your generation revolutionizes collective consciousness.",
+        "Pis": "You dissolve and regenerate at the deepest spiritual level."
+    },
+    "Ascendant": {
+        "Ari": "You project bold confidence and pioneering energy.",
+        "Tau": "You appear calm, reliable, and naturally grounded.",
+        "Gem": "You come across as witty, curious, and adaptable.",
+        "Can": "You project nurturing warmth and emotional sensitivity.",
+        "Leo": "You radiate magnetic presence and creative confidence.",
+        "Vir": "You appear modest, competent, and analytically minded.",
+        "Lib": "You project graceful diplomacy and aesthetic refinement.",
+        "Sco": "You emanate mysterious intensity and penetrating depth.",
+        "Sag": "You appear jovially optimistic and adventurously spirited.",
+        "Cap": "You project serious authority and mature competence.",
+        "Aqu": "You come across as uniquely individual and progressive.",
+        "Pis": "You project dreamy sensitivity and artistic imagination."
+    }
+}
+
+# House interpretations for each planet
+PLANET_HOUSE_INTERPRETATIONS = {
+    "Sun": {
+        1: "Your identity shines through self-expression and personal presence.",
+        2: "Self-worth and values are central to your identity.",
+        3: "Communication and learning illuminate your path.",
+        4: "Home and family form the foundation of your being.",
+        5: "Creative self-expression and joy define you.",
+        6: "Daily work and service shape your vitality.",
+        7: "Partnerships are essential to your sense of self.",
+        8: "Transformation and shared resources empower you.",
+        9: "Philosophy and expansion illuminate your journey.",
+        10: "Career and public recognition drive your purpose.",
+        11: "Community and future visions inspire your identity.",
+        12: "Spiritual depth and solitude nurture your soul."
+    },
+    "Moon": {
+        1: "Your emotions are visible and define your personality.",
+        2: "Emotional security comes through material stability.",
+        3: "You process feelings through communication and learning.",
+        4: "Home and family are your emotional sanctuary.",
+        5: "Creative expression nurtures your emotional well-being.",
+        6: "Daily routines and health affect your moods deeply.",
+        7: "Partnerships fulfill your emotional needs.",
+        8: "Deep emotional bonds and transformation move you.",
+        9: "Exploration and philosophy expand your emotional world.",
+        10: "Public life and career influence your inner security.",
+        11: "Friends and community provide emotional support.",
+        12: "You need solitude to process your deepest feelings."
+    },
+    "Mercury": {
+        1: "Your mind and communication define your personality.",
+        2: "You think strategically about money and resources.",
+        3: "Your mind thrives in learning and local connections.",
+        4: "Thoughts often turn to home and family matters.",
+        5: "Creative thinking and playful communication define you.",
+        6: "Your mind excels at problem-solving and analysis.",
+        7: "Communication is vital in your partnerships.",
+        8: "You probe the mysteries and hidden truths of life.",
+        9: "Your mind seeks higher knowledge and cultural wisdom.",
+        10: "Career success comes through intellectual pursuits.",
+        11: "You connect with groups through ideas and innovation.",
+        12: "Your thoughts often wander into the subconscious realm."
+    },
+    "Venus": {
+        1: "You attract through charm and natural grace.",
+        2: "You value beauty and find pleasure in possessions.",
+        3: "Love flows through communication and social connections.",
+        4: "Home is where you create beauty and harmony.",
+        5: "Romance and creative pleasures bring you joy.",
+        6: "You find love through service and daily life.",
+        7: "Partnership and harmony are your highest values.",
+        8: "Love is intense, transformative, and deeply bonded.",
+        9: "You seek love through adventure and shared beliefs.",
+        10: "Your career benefits from charm and diplomacy.",
+        11: "You attract through humanitarian ideals and friendship.",
+        12: "You love selflessly with spiritual compassion."
+    },
+    "Mars": {
+        1: "Your energy is assertive and physically dynamic.",
+        2: "You fight for financial security and material goals.",
+        3: "You assert yourself through communication and debate.",
+        4: "You protect your home and family with fierce loyalty.",
+        5: "Your passion shines through creativity and romance.",
+        6: "You put energy into work, health, and daily tasks.",
+        7: "You seek dynamic and challenging partnerships.",
+        8: "Your drive transforms through shared power and intimacy.",
+        9: "You fight for your beliefs and seek adventure.",
+        10: "Ambition and career drive your assertive energy.",
+        11: "You energize groups and fight for collective causes.",
+        12: "Your drive works best in solitude or behind the scenes."
+    },
+    "Jupiter": {
+        1: "Luck and optimism flow through your personality.",
+        2: "Abundance manifests through wise resource management.",
+        3: "Growth comes through learning and communication.",
+        4: "Blessings flow through home and family expansion.",
+        5: "Joy and fortune come through creativity and children.",
+        6: "Service and health bring expanding opportunities.",
+        7: "Partnerships bring growth and fortunate connections.",
+        8: "Transformation brings spiritual and material wealth.",
+        9: "Your natural realm—philosophy, travel, and higher learning.",
+        10: "Career brings recognition and expanding influence.",
+        11: "Friends and groups bring opportunities and vision.",
+        12: "Spiritual wisdom and inner growth are your gifts."
+    },
+    "Saturn": {
+        1: "You project maturity and carry responsibility with grace.",
+        2: "Building lasting financial security is your life work.",
+        3: "Discipline in learning brings mastery over time.",
+        4: "Family duties and home structure require your effort.",
+        5: "Creative discipline leads to lasting achievements.",
+        6: "Work ethic and health require consistent attention.",
+        7: "Committed partnerships teach you important lessons.",
+        8: "Deep transformation comes through facing fears.",
+        9: "Wisdom develops through structured belief systems.",
+        10: "Your natural realm—career, achievement, and public status.",
+        11: "Long-term friendships and group responsibilities matter.",
+        12: "Solitude and inner work bring spiritual mastery."
+    },
+    "Uranus": {
+        1: "You express uniqueness through your personality.",
+        2: "Unexpected changes affect your finances and values.",
+        3: "Your mind works in brilliant, unconventional ways.",
+        4: "Home life may be unconventional or unstable.",
+        5: "Your creativity is innovative and avant-garde.",
+        6: "You revolutionize work methods and health practices.",
+        7: "Relationships require freedom and experimentation.",
+        8: "Sudden transformations reshape your depths.",
+        9: "Your beliefs are progressive and unconventional.",
+        10: "Your career path is unusual and innovative.",
+        11: "You thrive in progressive groups and movements.",
+        12: "Sudden insights come from the subconscious realm."
+    },
+    "Neptune": {
+        1: "You project dreamy sensitivity and artistic charm.",
+        2: "Finances may be unclear—seek practical grounding.",
+        3: "Your mind flows with imagination and intuition.",
+        4: "Home holds spiritual significance and idealized memories.",
+        5: "Creativity channels divine inspiration and fantasy.",
+        6: "Service work and healing call to your soul.",
+        7: "You idealize partnerships and seek soul connections.",
+        8: "Deep merging and spiritual transformation beckon.",
+        9: "Your beliefs are mystical and universally compassionate.",
+        10: "Career may involve arts, healing, or spiritual work.",
+        11: "You dream of utopian communities and ideals.",
+        12: "Your natural realm—spirituality, dreams, and transcendence."
+    },
+    "Pluto": {
+        1: "Your presence carries intense, transformative power.",
+        2: "Deep transformation affects your values and resources.",
+        3: "Your communication carries psychological depth.",
+        4: "Family dynamics hold deep patterns to transform.",
+        5: "Creative expression channels powerful transformation.",
+        6: "Work and health undergo profound regeneration.",
+        7: "Relationships trigger deep psychological change.",
+        8: "Your natural realm—death, rebirth, and shared power.",
+        9: "Your beliefs undergo radical transformation.",
+        10: "Career involves power dynamics and transformation.",
+        11: "You transform groups and collective consciousness.",
+        12: "Deep subconscious patterns undergo regeneration."
     }
 }
 
@@ -219,14 +461,23 @@ class AstrologyService:
             "is_retrograde": is_retrograde,
             "element": SIGN_ELEMENTS.get(sign_abbr, "Unknown"),
             "modality": SIGN_MODALITIES.get(sign_abbr, "Unknown"),
-            "interpretation": AstrologyService.get_interpretation(planet_name, sign_abbr)
+            "interpretation": AstrologyService.get_interpretation(planet_name, sign_abbr, house_num)
         }
 
     @staticmethod
-    def get_interpretation(planet_name: str, sign_abbr: str) -> str:
-        """Get interpretation text for planet in sign."""
+    def get_interpretation(planet_name: str, sign_abbr: str, house: int = None) -> str:
+        """Get interpretation text for planet in sign (and optionally house)."""
         planet_interps = PLANET_SIGN_INTERPRETATIONS.get(planet_name, {})
-        return planet_interps.get(sign_abbr, f"{planet_name} in {SIGN_NAMES.get(sign_abbr, sign_abbr)}")
+        sign_interp = planet_interps.get(sign_abbr, f"{planet_name} in {SIGN_NAMES.get(sign_abbr, sign_abbr)}")
+
+        # Add house interpretation if available
+        if house and planet_name in PLANET_HOUSE_INTERPRETATIONS:
+            house_interps = PLANET_HOUSE_INTERPRETATIONS.get(planet_name, {})
+            house_interp = house_interps.get(house)
+            if house_interp:
+                return f"{sign_interp} {house_interp}"
+
+        return sign_interp
 
     @staticmethod
     def calculate_natal_chart(
