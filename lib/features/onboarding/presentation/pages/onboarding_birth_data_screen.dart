@@ -32,6 +32,9 @@ class _OnboardingBirthDataScreenState
   DateTime? _birthDate;
   DateTime? _birthTime;
   String? _birthLocation;
+  double? _birthLatitude;
+  double? _birthLongitude;
+  String? _birthTimezone;
 
   // Animation states
   bool _showQuestion = false;
@@ -66,7 +69,7 @@ class _OnboardingBirthDataScreenState
 
   /// Check if all data is entered
   bool get _isDataComplete =>
-      _birthDate != null && _birthTime != null && _birthLocation != null;
+      _birthDate != null && _birthTime != null && _birthLocation != null && _birthLatitude != null;
 
   /// Show the button when data is complete
   void _maybeShowButton() {
@@ -132,12 +135,7 @@ class _OnboardingBirthDataScreenState
 
   /// Save birth data to user provider for use in Sky Hall
   void _saveBirthData() {
-    if (_birthDate == null || _birthTime == null || _birthLocation == null) return;
-
-    // Get coordinates from location
-    final coords = MysticLocationPicker.getCoordinates(_birthLocation);
-    final latitude = coords?[0] ?? 41.0; // Default to Istanbul
-    final longitude = coords?[1] ?? 28.9;
+    if (_birthDate == null || _birthTime == null || _birthLocation == null || _birthLatitude == null) return;
 
     // Format date as YYYY-MM-DD
     final dateStr = '${_birthDate!.year}-${_birthDate!.month.toString().padLeft(2, '0')}-${_birthDate!.day.toString().padLeft(2, '0')}';
@@ -145,14 +143,14 @@ class _OnboardingBirthDataScreenState
     // Format time as HH:MM
     final timeStr = '${_birthTime!.hour.toString().padLeft(2, '0')}:${_birthTime!.minute.toString().padLeft(2, '0')}';
 
-    // Save to user provider
+    // Save to user provider with coordinates from location search
     ref.read(userProvider.notifier).setBirthData(
       date: dateStr,
       time: timeStr,
-      latitude: latitude,
-      longitude: longitude,
+      latitude: _birthLatitude!,
+      longitude: _birthLongitude ?? 0.0,
       city: _birthLocation,
-      timezone: 'UTC', // Could be improved with timezone lookup
+      timezone: _birthTimezone ?? 'UTC',
     );
 
     // Save signs if profile was calculated
@@ -283,11 +281,16 @@ class _OnboardingBirthDataScreenState
 
         const SizedBox(height: AppConstants.spacingMedium),
 
-        // Location picker
-        MysticLocationPicker(
-          selectedLocation: _birthLocation,
-          onLocationSelected: (location) {
-            setState(() => _birthLocation = location);
+        // Location search field (replaces old country/city picker)
+        MysticLocationSearchField(
+          initialValue: _birthLocation,
+          onLocationSelected: (lat, lng, placeName, timezone) {
+            setState(() {
+              _birthLocation = placeName;
+              _birthLatitude = lat;
+              _birthLongitude = lng;
+              _birthTimezone = timezone;
+            });
             HapticFeedback.selectionClick();
           },
         )

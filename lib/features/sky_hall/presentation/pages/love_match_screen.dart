@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/constants/constants.dart';
 import '../../../../shared/providers/providers.dart';
+import '../../../../shared/widgets/widgets.dart';
 import '../../data/providers/sky_hall_provider.dart';
 import '../widgets/compatibility_result_view.dart';
 
@@ -25,6 +26,7 @@ class _LoveMatchScreenState extends ConsumerState<LoveMatchScreen> {
   TimeOfDay? _partnerBirthTime;
   double? _partnerLatitude;
   double? _partnerLongitude;
+  String? _partnerLocation;
   String _partnerTimezone = 'UTC';
 
   bool _showResults = false;
@@ -437,84 +439,21 @@ class _LoveMatchScreenState extends ConsumerState<LoveMatchScreen> {
   }
 
   Widget _buildLocationPicker() {
-    // Simplified location input
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Birth Location',
-          style: AppTypography.labelSmall.copyWith(
-            color: AppColors.textSecondary,
-          ),
-        ),
-        const SizedBox(height: 6),
-        Row(
-          children: [
-            Expanded(
-              child: TextFormField(
-                style: AppTypography.bodyMedium.copyWith(
-                  color: AppColors.textPrimary,
-                ),
-                textInputAction: TextInputAction.next,
-                decoration: InputDecoration(
-                  hintText: 'Latitude',
-                  hintStyle: AppTypography.bodyMedium.copyWith(
-                    color: AppColors.textTertiary,
-                  ),
-                  filled: true,
-                  fillColor: Colors.black.withOpacity(0.2),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(AppConstants.borderRadiusMedium),
-                    borderSide: BorderSide.none,
-                  ),
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 14,
-                  ),
-                ),
-                keyboardType: TextInputType.number,
-                onChanged: (value) => _partnerLatitude = double.tryParse(value),
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: TextFormField(
-                style: AppTypography.bodyMedium.copyWith(
-                  color: AppColors.textPrimary,
-                ),
-                textInputAction: TextInputAction.done,
-                onFieldSubmitted: (_) => _dismissKeyboard(),
-                decoration: InputDecoration(
-                  hintText: 'Longitude',
-                  hintStyle: AppTypography.bodyMedium.copyWith(
-                    color: AppColors.textTertiary,
-                  ),
-                  filled: true,
-                  fillColor: Colors.black.withOpacity(0.2),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(AppConstants.borderRadiusMedium),
-                    borderSide: BorderSide.none,
-                  ),
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 14,
-                  ),
-                ),
-                keyboardType: TextInputType.number,
-                onChanged: (value) => _partnerLongitude = double.tryParse(value),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 8),
-        Text(
-          'Tip: Use coordinates (e.g., Istanbul: 41.0, 28.9)',
-          style: AppTypography.labelSmall.copyWith(
-            color: AppColors.textTertiary,
-            fontStyle: FontStyle.italic,
-          ),
-        ),
-      ],
+    // Location search with autocomplete
+    return MysticLocationSearchField(
+      label: 'Birth Location',
+      placeholder: 'Search city...',
+      initialValue: _partnerLocation,
+      onLocationSelected: (lat, lng, placeName, timezone) {
+        setState(() {
+          _partnerLatitude = lat;
+          _partnerLongitude = lng;
+          _partnerLocation = placeName;
+          if (timezone != null) {
+            _partnerTimezone = timezone;
+          }
+        });
+      },
     );
   }
 
@@ -607,9 +546,19 @@ class _LoveMatchScreenState extends ConsumerState<LoveMatchScreen> {
       return;
     }
 
-    // Default coordinates if not provided
-    final partnerLat = _partnerLatitude ?? 41.0;
-    final partnerLng = _partnerLongitude ?? 28.9;
+    // Validate partner location
+    if (_partnerLatitude == null || _partnerLongitude == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("Please select partner's birth location."),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    final partnerLat = _partnerLatitude!;
+    final partnerLng = _partnerLongitude!;
 
     // Build request data
     final user1Data = {
