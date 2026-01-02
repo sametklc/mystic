@@ -2,7 +2,20 @@
   "permissions": {
     "allow": [
       "Bash(mkdir:*)",
-      "Bash(flutter analyze:*)"
+      "Bash(flutter analyze:*)",
+      "Bash(flutter run)",
+      "Bash(tree:*)",
+      "Bash(flutter attach:*)",
+      "Bash(flutter devices:*)",
+      "Bash(curl:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(flutter pub get:*)",
+      "Bash(flutter run:*)",
+      "Bash(cat:*)",
+      "Bash(pip3 install:*)",
+      "Bash(ipconfig getifaddr:*)"
     ]
   }
 }

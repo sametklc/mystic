@@ -20,6 +20,12 @@ python-dotenv==1.0.1
 # Data Validation (included with FastAPI, but pinned for clarity)
 pydantic==2.10.4
 
+# Astrology Calculations (Swiss Ephemeris wrapper)
+kerykeion==4.14.0
+
+# ElevenLabs TTS (uses httpx for async streaming)
+# httpx is already included above
+
 # Security
 python-jose[cryptography]==3.3.0
 

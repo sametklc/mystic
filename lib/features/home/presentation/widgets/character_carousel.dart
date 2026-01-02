@@ -52,8 +52,12 @@ class _CharacterCarouselState extends ConsumerState<CharacterCarousel> {
     final characters = CharacterData.characters;
     final selectedIndex = ref.watch(selectedCharacterIndexProvider);
 
+    // Make carousel height responsive to screen size
+    final screenHeight = MediaQuery.of(context).size.height;
+    final carouselHeight = screenHeight < 700 ? 320.0 : (screenHeight < 800 ? 360.0 : 400.0);
+
     return SizedBox(
-      height: 420,
+      height: carouselHeight,
       child: PageView.builder(
         controller: _pageController,
         itemCount: characters.length,
@@ -95,6 +99,52 @@ class _CharacterCarouselState extends ConsumerState<CharacterCarousel> {
         child: _CharacterCard(
           character: character,
           isActive: isActive,
+          onTap: () => _onCharacterTap(index, isActive),
+        ),
+      ),
+    );
+  }
+
+  void _onCharacterTap(int index, bool isActive) {
+    if (!isActive) {
+      // Animate to this character's page
+      _pageController.animateToPage(
+        index,
+        duration: const Duration(milliseconds: 400),
+        curve: Curves.easeOutCubic,
+      );
+    } else {
+      // Already selected - show character details or proceed to reading
+      _showCharacterSelected(index);
+    }
+  }
+
+  void _showCharacterSelected(int index) {
+    final character = CharacterData.characters[index];
+
+    if (character.isLocked) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('${character.name} is locked. Coming soon!'),
+          backgroundColor: character.themeColor.withOpacity(0.9),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
+      );
+      return;
+    }
+
+    // Show confirmation that character is selected
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('${character.name} will guide your reading'),
+        backgroundColor: character.themeColor.withOpacity(0.9),
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 2),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
         ),
       ),
     );
@@ -105,17 +155,21 @@ class _CharacterCarouselState extends ConsumerState<CharacterCarousel> {
 class _CharacterCard extends StatelessWidget {
   final CharacterModel character;
   final bool isActive;
+  final VoidCallback? onTap;
 
   const _CharacterCard({
     required this.character,
     required this.isActive,
+    this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
     final themeColor = character.themeColor;
 
-    Widget card = Container(
+    Widget card = GestureDetector(
+      onTap: onTap,
+      child: Container(
       margin: const EdgeInsets.symmetric(
         horizontal: AppConstants.spacingSmall,
         vertical: AppConstants.spacingMedium,
@@ -185,6 +239,7 @@ class _CharacterCard extends StatelessWidget {
           ),
         ),
       ),
+      ),
     );
 
     // Add pulse animation for active card
@@ -225,6 +280,10 @@ class _CharacterCard extends StatelessWidget {
 
   Widget _buildCardContent(BuildContext context) {
     final themeColor = character.themeColor;
+    // Use white/light text for better contrast against colored gradients
+    final nameColor = Colors.white;
+    final titleColor = Colors.white.withOpacity(0.85);
+    final descColor = Colors.white.withOpacity(0.7);
 
     return Padding(
       padding: const EdgeInsets.all(AppConstants.spacingLarge),
@@ -238,16 +297,20 @@ class _CharacterCard extends StatelessWidget {
 
           const SizedBox(height: AppConstants.spacingLarge),
 
-          // Character name (Cinzel font)
+          // Character name (Cinzel font) - white with glow for contrast
           Text(
             character.name.toUpperCase(),
             style: AppTypography.headlineMedium.copyWith(
-              color: themeColor,
+              color: nameColor,
               letterSpacing: 2.5,
               shadows: [
                 Shadow(
-                  color: themeColor.withOpacity(0.5),
-                  blurRadius: 10,
+                  color: themeColor,
+                  blurRadius: 15,
+                ),
+                Shadow(
+                  color: Colors.black.withOpacity(0.5),
+                  blurRadius: 5,
                 ),
               ],
             ),
@@ -260,8 +323,14 @@ class _CharacterCard extends StatelessWidget {
           Text(
             character.title,
             style: AppTypography.mysticalQuote.copyWith(
-              color: AppColors.textSecondary,
+              color: titleColor,
               fontSize: 14,
+              shadows: [
+                Shadow(
+                  color: Colors.black.withOpacity(0.5),
+                  blurRadius: 4,
+                ),
+              ],
             ),
             textAlign: TextAlign.center,
           ),
@@ -276,8 +345,14 @@ class _CharacterCard extends StatelessWidget {
             child: Text(
               character.description,
               style: AppTypography.bodySmall.copyWith(
-                color: AppColors.textTertiary,
+                color: descColor,
                 height: 1.6,
+                shadows: [
+                  Shadow(
+                    color: Colors.black.withOpacity(0.5),
+                    blurRadius: 3,
+                  ),
+                ],
               ),
               textAlign: TextAlign.center,
               maxLines: 3,
@@ -302,19 +377,19 @@ class _CharacterCard extends StatelessWidget {
         shape: BoxShape.circle,
         gradient: RadialGradient(
           colors: [
-            themeColor.withOpacity(0.4),
-            themeColor.withOpacity(0.2),
-            themeColor.withOpacity(0.05),
+            themeColor.withOpacity(0.5),
+            themeColor.withOpacity(0.3),
+            themeColor.withOpacity(0.1),
           ],
         ),
         border: Border.all(
-          color: themeColor.withOpacity(0.5),
+          color: Colors.white.withOpacity(0.4),
           width: 2,
         ),
         boxShadow: [
           BoxShadow(
-            color: themeColor.withOpacity(0.3),
-            blurRadius: 20,
+            color: themeColor.withOpacity(0.5),
+            blurRadius: 25,
             spreadRadius: 5,
           ),
         ],
@@ -323,7 +398,13 @@ class _CharacterCard extends StatelessWidget {
         child: Icon(
           _getCharacterIcon(),
           size: 48,
-          color: themeColor,
+          color: Colors.white,
+          shadows: [
+            Shadow(
+              color: themeColor,
+              blurRadius: 10,
+            ),
+          ],
         ),
       ),
     )
@@ -426,49 +507,108 @@ class _CharacterCard extends StatelessWidget {
   }
 
   Widget _buildLockOverlay(BuildContext context) {
+    final themeColor = character.themeColor;
+
     return Positioned.fill(
       child: ClipRRect(
         borderRadius: BorderRadius.circular(AppConstants.glassBorderRadius),
         child: Container(
           decoration: BoxDecoration(
-            color: Colors.black.withOpacity(0.5),
+            // Subtle gradient overlay - less harsh than solid black
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                Colors.black.withOpacity(0.3),
+                Colors.black.withOpacity(0.5),
+                Colors.black.withOpacity(0.7),
+              ],
+            ),
           ),
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 2, sigmaY: 2),
-            child: Center(
-              child: Container(
+          child: Column(
+            children: [
+              // Coming Soon badge at top
+              Padding(
                 padding: const EdgeInsets.all(AppConstants.spacingMedium),
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: AppColors.backgroundTertiary.withOpacity(0.9),
-                  border: Border.all(
-                    color: AppColors.glassBorder,
-                    width: 2,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppConstants.spacingMedium,
+                    vertical: AppConstants.spacingSmall,
                   ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.3),
-                      blurRadius: 20,
-                      spreadRadius: 5,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(AppConstants.borderRadiusRound),
+                    gradient: LinearGradient(
+                      colors: [
+                        themeColor.withOpacity(0.4),
+                        themeColor.withOpacity(0.2),
+                      ],
+                    ),
+                    border: Border.all(
+                      color: themeColor.withOpacity(0.5),
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.lock_outline,
+                        size: 14,
+                        color: Colors.white.withOpacity(0.9),
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        'COMING SOON',
+                        style: AppTypography.labelSmall.copyWith(
+                          color: Colors.white.withOpacity(0.9),
+                          letterSpacing: 1.5,
+                        ),
+                      ),
+                    ],
+                  ),
+                )
+                    .animate(
+                      onPlay: (controller) => controller.repeat(reverse: true),
+                    )
+                    .shimmer(
+                      duration: 2.seconds,
+                      color: themeColor.withOpacity(0.3),
+                    ),
+              ),
+
+              const Spacer(),
+
+              // Character name visible at bottom
+              Padding(
+                padding: const EdgeInsets.all(AppConstants.spacingLarge),
+                child: Column(
+                  children: [
+                    Text(
+                      character.name.toUpperCase(),
+                      style: AppTypography.headlineSmall.copyWith(
+                        color: Colors.white.withOpacity(0.9),
+                        letterSpacing: 2.0,
+                        shadows: [
+                          Shadow(
+                            color: themeColor,
+                            blurRadius: 10,
+                          ),
+                        ],
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      character.title,
+                      style: AppTypography.bodySmall.copyWith(
+                        color: Colors.white.withOpacity(0.7),
+                        fontStyle: FontStyle.italic,
+                      ),
+                      textAlign: TextAlign.center,
                     ),
                   ],
                 ),
-                child: Icon(
-                  Icons.lock_rounded,
-                  size: 40,
-                  color: AppColors.textSecondary,
-                ),
-              )
-                  .animate(
-                    onPlay: (controller) => controller.repeat(reverse: true),
-                  )
-                  .scale(
-                    begin: const Offset(1.0, 1.0),
-                    end: const Offset(1.1, 1.1),
-                    duration: 1500.ms,
-                    curve: Curves.easeInOut,
-                  ),
-            ),
+              ),
+            ],
           ),
         ),
       ),

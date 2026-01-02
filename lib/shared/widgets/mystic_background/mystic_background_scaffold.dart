@@ -231,9 +231,12 @@ class _MysticBackgroundScaffoldState extends State<MysticBackgroundScaffold>
               ),
             ),
 
-            // Layer 5: Child Content
+            // Layer 5: Child Content (wrapped in Material for TextField, IconButton, etc.)
             Positioned.fill(
-              child: widget.child,
+              child: Material(
+                type: MaterialType.transparency,
+                child: widget.child,
+              ),
             ),
           ],
         );
@@ -292,7 +295,10 @@ class MysticBackgroundStatic extends StatelessWidget {
           colors: gradientColors ?? _defaultGradientColors,
         ),
       ),
-      child: child,
+      child: Material(
+        type: MaterialType.transparency,
+        child: child,
+      ),
     );
   }
 }

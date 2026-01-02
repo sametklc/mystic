@@ -1,12 +1,21 @@
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'app.dart';
+import 'core/services/device_id_service.dart';
 
 void main() async {
   // Ensure Flutter bindings are initialized
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Initialize Firebase
+  await Firebase.initializeApp();
+
+  // Initialize SharedPreferences
+  final sharedPreferences = await SharedPreferences.getInstance();
 
   // Set preferred orientations (portrait only for mystical experience)
   await SystemChrome.setPreferredOrientations([
@@ -34,8 +43,12 @@ void main() async {
 
   // Run the app wrapped in Riverpod's ProviderScope
   runApp(
-    const ProviderScope(
-      child: MysticApp(),
+    ProviderScope(
+      overrides: [
+        // Provide SharedPreferences instance
+        sharedPreferencesProvider.overrideWithValue(sharedPreferences),
+      ],
+      child: const MysticApp(),
     ),
   );
 }

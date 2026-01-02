@@ -12,6 +12,13 @@ from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
+# Astrology
+from models.astrology_models import (
+    NatalChartRequest, NatalChartResponse,
+    SynastryRequest, SynastryReport
+)
+from services.astrology_service import AstrologyService
+
 # Firebase Admin SDK
 import firebase_admin
 from firebase_admin import credentials, firestore
@@ -499,6 +506,222 @@ async def get_user_readings(user_id: str, limit: int = 10):
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# =============================================================================
+# Astrology Endpoints (Sky Hall)
+# =============================================================================
+
+@app.post("/astrology/natal-chart", response_model=NatalChartResponse)
+async def calculate_natal_chart(request: NatalChartRequest):
+    """
+    Calculate a complete natal chart based on birth data.
+    Returns planetary positions, houses, aspects, and interpretations.
+    """
+    try:
+        chart = AstrologyService.calculate_natal_chart(
+            date=request.date,
+            time=request.time,
+            latitude=request.latitude,
+            longitude=request.longitude,
+            timezone=request.timezone,
+            name=request.name or "Seeker"
+        )
+        return NatalChartResponse(**chart)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Chart calculation error: {str(e)}")
+
+
+@app.post("/astrology/synastry", response_model=SynastryReport)
+async def calculate_synastry(request: SynastryRequest):
+    """
+    Calculate synastry (compatibility) between two natal charts.
+    Returns compatibility scores, key aspects, and both charts.
+    """
+    try:
+        user1_data = {
+            "date": request.user1.date,
+            "time": request.user1.time,
+            "latitude": request.user1.latitude,
+            "longitude": request.user1.longitude,
+            "timezone": request.user1.timezone,
+            "name": request.user1.name or "Person 1"
+        }
+        user2_data = {
+            "date": request.user2.date,
+            "time": request.user2.time,
+            "latitude": request.user2.latitude,
+            "longitude": request.user2.longitude,
+            "timezone": request.user2.timezone,
+            "name": request.user2.name or "Person 2"
+        }
+
+        report = AstrologyService.calculate_synastry(user1_data, user2_data)
+        return SynastryReport(**report)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Synastry calculation error: {str(e)}")
+
+
+class DailyInsightResponse(BaseModel):
+    """Response model for daily cosmic insight."""
+    date: str
+    moon_phase: str
+    moon_phase_icon: str
+    moon_illumination: float
+    moon_sign: str
+    moon_sign_symbol: str
+    moon_element: str
+    mercury_retrograde: bool
+    mercury_status: str
+    advice: str
+    sun_sign: str
+
+
+@app.get("/astrology/daily-insight", response_model=DailyInsightResponse)
+async def get_daily_insight(date_str: Optional[str] = None):
+    """
+    Get the daily cosmic insight including:
+    - Current Moon phase and illumination
+    - Moon sign and element
+    - Mercury retrograde status
+    - AI-generated mystical advice
+
+    Optionally provide a date in YYYY-MM-DD format, defaults to today.
+    """
+    from datetime import date as date_type
+
+    try:
+        target_date = None
+        if date_str:
+            target_date = date_type.fromisoformat(date_str)
+
+        insight = await AstrologyService.get_daily_insight(target_date)
+        return DailyInsightResponse(**insight)
+
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=f"Invalid date format: {str(e)}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Daily insight error: {str(e)}")
+
+
+# =============================================================================
+# Text-to-Speech Endpoints (ElevenLabs)
+# =============================================================================
+
+from fastapi.responses import StreamingResponse
+from services.elevenlabs_service import (
+    get_elevenlabs_service,
+    ElevenLabsError,
+    CHARACTER_VOICE_MAP,
+)
+
+
+class TTSRequest(BaseModel):
+    """Request model for text-to-speech."""
+    text: str = Field(..., min_length=1, max_length=5000, description="Text to synthesize")
+    character_id: str = Field(default="madame_luna", description="Character voice to use")
+    use_cache: bool = Field(default=True, description="Whether to use caching")
+    stream: bool = Field(default=True, description="Whether to stream the response")
+
+
+class TTSResponse(BaseModel):
+    """Response model for non-streaming TTS."""
+    success: bool
+    audio_url: Optional[str] = None
+    cached: bool = False
+    error: Optional[str] = None
+
+
+@app.post("/tts/speak")
+async def text_to_speech(request: TTSRequest):
+    """
+    Convert text to speech using ElevenLabs API.
+
+    - If stream=True, returns streaming audio/mpeg response for lower latency.
+    - If stream=False, returns full audio file.
+    - Uses caching to reduce API costs for repeated texts.
+    """
+    service = get_elevenlabs_service()
+
+    if not service.is_configured:
+        raise HTTPException(
+            status_code=503,
+            detail="Text-to-speech service not configured"
+        )
+
+    try:
+        if request.stream:
+            # Streaming response for lower latency
+            async def audio_stream():
+                async for chunk in service.synthesize_speech_stream(
+                    text=request.text,
+                    character_id=request.character_id,
+                ):
+                    yield chunk
+
+            return StreamingResponse(
+                audio_stream(),
+                media_type="audio/mpeg",
+                headers={
+                    "Content-Disposition": "inline",
+                    "Cache-Control": "no-cache",
+                }
+            )
+        else:
+            # Full audio response with caching
+            audio_data = await service.synthesize_speech(
+                text=request.text,
+                character_id=request.character_id,
+                use_cache=request.use_cache,
+            )
+
+            return StreamingResponse(
+                iter([audio_data]),
+                media_type="audio/mpeg",
+                headers={
+                    "Content-Disposition": "inline",
+                    "Content-Length": str(len(audio_data)),
+                }
+            )
+
+    except ElevenLabsError as e:
+        raise HTTPException(
+            status_code=e.status_code or 500,
+            detail=e.message
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"TTS error: {str(e)}"
+        )
+
+
+@app.get("/tts/voices")
+async def get_available_voices():
+    """Get list of available character voices for TTS."""
+    return {
+        "voices": [
+            {
+                "character_id": char_id,
+                "description": config.get("description", ""),
+            }
+            for char_id, config in CHARACTER_VOICE_MAP.items()
+        ]
+    }
+
+
+@app.get("/tts/health")
+async def tts_health_check():
+    """Check if TTS service is available."""
+    service = get_elevenlabs_service()
+    return {
+        "configured": service.is_configured,
+        "available_characters": list(CHARACTER_VOICE_MAP.keys()),
+    }
 
 
 # =============================================================================

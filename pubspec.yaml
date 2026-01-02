@@ -48,10 +48,19 @@ dependencies:
   firebase_core: ^3.8.1
   cloud_firestore: ^5.6.0
   firebase_auth: ^5.3.4
+  firebase_storage: ^12.3.7
+
+  # Local Storage
+  shared_preferences: ^2.3.3
+  uuid: ^4.5.1
 
   # HTTP & Networking
   http: ^1.2.0
   dio: ^5.4.0
+
+  # Audio Playback
+  just_audio: ^0.9.40
+  audio_session: ^0.1.21
 
 dev_dependencies:
   flutter_test:

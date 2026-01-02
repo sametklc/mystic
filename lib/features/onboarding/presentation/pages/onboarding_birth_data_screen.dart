@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/constants/constants.dart';
 import '../../../../shared/models/models.dart';
+import '../../../../shared/providers/providers.dart';
 import '../../../../shared/services/services.dart';
 import '../../../../shared/widgets/widgets.dart';
 
@@ -119,11 +120,48 @@ class _OnboardingBirthDataScreenState
   Future<void> _onContinue() async {
     HapticFeedback.lightImpact();
 
+    // Save birth data to user provider
+    _saveBirthData();
+
     setState(() => _isExiting = true);
 
     await Future.delayed(const Duration(milliseconds: 800));
 
     widget.onComplete?.call();
+  }
+
+  /// Save birth data to user provider for use in Sky Hall
+  void _saveBirthData() {
+    if (_birthDate == null || _birthTime == null || _birthLocation == null) return;
+
+    // Get coordinates from location
+    final coords = MysticLocationPicker.getCoordinates(_birthLocation);
+    final latitude = coords?[0] ?? 41.0; // Default to Istanbul
+    final longitude = coords?[1] ?? 28.9;
+
+    // Format date as YYYY-MM-DD
+    final dateStr = '${_birthDate!.year}-${_birthDate!.month.toString().padLeft(2, '0')}-${_birthDate!.day.toString().padLeft(2, '0')}';
+
+    // Format time as HH:MM
+    final timeStr = '${_birthTime!.hour.toString().padLeft(2, '0')}:${_birthTime!.minute.toString().padLeft(2, '0')}';
+
+    // Save to user provider
+    ref.read(userProvider.notifier).setBirthData(
+      date: dateStr,
+      time: timeStr,
+      latitude: latitude,
+      longitude: longitude,
+      city: _birthLocation,
+      timezone: 'UTC', // Could be improved with timezone lookup
+    );
+
+    // Save signs if profile was calculated
+    if (_profile != null) {
+      ref.read(userProvider.notifier).setSigns(
+        sunSign: _profile!.sunSign.name,
+        risingSign: _profile!.ascendantSign.name,
+      );
+    }
   }
 
   @override
@@ -189,7 +227,7 @@ class _OnboardingBirthDataScreenState
     return Column(
       children: [
         Text(
-          'Yıldızların konumunu\nöğrenmemiz gerek.',
+          'We need to know\nwhere the stars were.',
           textAlign: TextAlign.center,
           style: AppTypography.displaySmall.copyWith(
             color: AppColors.textPrimary,
@@ -201,7 +239,7 @@ class _OnboardingBirthDataScreenState
             .slideY(begin: 0.2, end: 0, duration: 1000.ms),
         const SizedBox(height: AppConstants.spacingMedium),
         Text(
-          'Doğum bilgilerini gir.',
+          'Enter your birth details.',
           textAlign: TextAlign.center,
           style: AppTypography.bodyLarge.copyWith(
             color: AppColors.textSecondary,
@@ -346,7 +384,7 @@ class _OnboardingBirthDataScreenState
 
           // Main signs text
           Text(
-            'Güneş: ${_profile!.sunSign.turkishName}',
+            'Sun: ${_profile!.sunSign.name}',
             style: AppTypography.headlineMedium.copyWith(
               color: AppColors.textPrimary,
             ),
@@ -358,7 +396,7 @@ class _OnboardingBirthDataScreenState
           const SizedBox(height: AppConstants.spacingSmall),
 
           Text(
-            'Yükselen: ${_profile!.ascendantSign.turkishName}',
+            'Rising: ${_profile!.ascendantSign.name}',
             style: AppTypography.bodyLarge.copyWith(
               color: AppColors.textSecondary,
             ),
@@ -395,7 +433,7 @@ class _OnboardingBirthDataScreenState
 
           // Continue button
           _MysticContinueButton(
-            label: 'Rehberinle Tanış',
+            label: 'Meet Your Guide',
             onPressed: _onContinue,
           )
               .animate()
@@ -488,7 +526,7 @@ class _MysticRevealButtonState extends State<_MysticRevealButton>
                   const Icon(Icons.auto_awesome, size: 22),
                   const SizedBox(width: AppConstants.spacingSmall),
                   Text(
-                    'Kaderini Keşfet',
+                    'Reveal Your Destiny',
                     style: AppTypography.button.copyWith(
                       fontSize: 18,
                       letterSpacing: 1.5,

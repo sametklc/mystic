@@ -110,6 +110,12 @@ class _ZodiacWheelState extends State<ZodiacWheel>
 
     // Start reveal animation
     _revealController.forward();
+
+    // Start spinning if initially spinning
+    if (widget.isSpinning) {
+      _wasSpinning = true;
+      _startSpinning();
+    }
   }
 
   @override
