@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
@@ -110,6 +112,10 @@ class _TarotSelectionScreenState extends ConsumerState<TarotSelectionScreen>
 
     final cardName = majorArcana[cardIndex].name;
 
+    // Randomly determine if card is upright (75% upright, 25% reversed)
+    final random = Random();
+    final isUpright = random.nextDouble() > 0.25;
+
     // Navigate to reveal screen
     Navigator.of(context).push(
       PageRouteBuilder(
@@ -119,6 +125,7 @@ class _TarotSelectionScreenState extends ConsumerState<TarotSelectionScreen>
             visionaryMode: _visionaryMode,
             cardIndex: cardIndex,
             cardName: cardName,
+            isUpright: isUpright,
           );
         },
         transitionsBuilder: (context, animation, secondaryAnimation, child) {
@@ -140,14 +147,21 @@ class _TarotSelectionScreenState extends ConsumerState<TarotSelectionScreen>
     });
   }
 
+  void _dismissKeyboard() {
+    _questionFocusNode.unfocus();
+  }
+
   @override
   Widget build(BuildContext context) {
     final keyboardVisible = MediaQuery.of(context).viewInsets.bottom > 0;
     final isCharging = _phase == TarotSelectionPhase.charging;
 
     return MysticBackgroundScaffold(
-      child: SafeArea(
-        child: Column(
+      child: GestureDetector(
+        onTap: _dismissKeyboard,
+        behavior: HitTestBehavior.opaque,
+        child: SafeArea(
+          child: Column(
           children: [
             // Header
             _buildHeader(),
@@ -210,6 +224,7 @@ class _TarotSelectionScreenState extends ConsumerState<TarotSelectionScreen>
 
             const SizedBox(height: 40),
           ],
+        ),
         ),
       ),
     );
@@ -289,6 +304,8 @@ class _TarotSelectionScreenState extends ConsumerState<TarotSelectionScreen>
             maxLines: 3,
             minLines: 1,
             textAlign: TextAlign.center,
+            textInputAction: TextInputAction.done,
+            onSubmitted: (_) => _dismissKeyboard(),
             decoration: InputDecoration(
               hintText: 'Focus on your question...',
               hintStyle: AppTypography.bodyLarge.copyWith(

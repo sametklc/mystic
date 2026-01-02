@@ -5,6 +5,7 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_typography.dart';
+import '../../../tarot/data/tarot_deck_assets.dart';
 import '../../domain/models/grimoire_entry_model.dart';
 
 /// A gallery art card for the masonry grid.
@@ -54,47 +55,8 @@ class GalleryArtCard extends StatelessWidget {
             child: Stack(
               fit: StackFit.passthrough,
               children: [
-                // Image
-                Image.network(
-                  art.imageUrl,
-                  fit: BoxFit.cover,
-                  loadingBuilder: (context, child, loadingProgress) {
-                    if (loadingProgress == null) return child;
-                    return AspectRatio(
-                      aspectRatio: 9 / 16,
-                      child: Container(
-                        color: AppColors.backgroundSecondary,
-                        child: Center(
-                          child: SizedBox(
-                            width: 24,
-                            height: 24,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              valueColor: AlwaysStoppedAnimation<Color>(
-                                AppColors.primary.withValues(alpha: 0.5),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    );
-                  },
-                  errorBuilder: (context, error, stackTrace) {
-                    return AspectRatio(
-                      aspectRatio: 9 / 16,
-                      child: Container(
-                        color: AppColors.backgroundSecondary,
-                        child: Center(
-                          child: Icon(
-                            Icons.broken_image_outlined,
-                            color: AppColors.textTertiary,
-                            size: 32,
-                          ),
-                        ),
-                      ),
-                    );
-                  },
-                ),
+                // Image with asset fallback
+                _buildCardImage(),
 
                 // Bottom gradient overlay
                 Positioned(
@@ -156,6 +118,82 @@ class GalleryArtCard extends StatelessWidget {
         .fadeIn(delay: Duration(milliseconds: 50 * index), duration: 400.ms)
         .scale(begin: const Offset(0.95, 0.95), end: const Offset(1, 1), duration: 400.ms);
   }
+
+  Widget _buildCardImage() {
+    final assetPath = TarotDeckAssets.getCardByName(art.cardName);
+
+    // Try network image first, fallback to asset
+    if (art.imageUrl.isNotEmpty) {
+      return Image.network(
+        art.imageUrl,
+        fit: BoxFit.cover,
+        loadingBuilder: (context, child, loadingProgress) {
+          if (loadingProgress == null) return child;
+          return AspectRatio(
+            aspectRatio: 9 / 16,
+            child: Container(
+              color: AppColors.backgroundSecondary,
+              child: Center(
+                child: SizedBox(
+                  width: 24,
+                  height: 24,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    valueColor: AlwaysStoppedAnimation<Color>(
+                      AppColors.primary.withValues(alpha: 0.5),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          );
+        },
+        errorBuilder: (context, error, stackTrace) {
+          // Fallback to local asset
+          return Image.asset(
+            assetPath,
+            fit: BoxFit.cover,
+            errorBuilder: (context, error, stackTrace) {
+              return AspectRatio(
+                aspectRatio: 9 / 16,
+                child: Container(
+                  color: AppColors.backgroundSecondary,
+                  child: Center(
+                    child: Icon(
+                      Icons.auto_awesome,
+                      color: AppColors.primary.withValues(alpha: 0.5),
+                      size: 32,
+                    ),
+                  ),
+                ),
+              );
+            },
+          );
+        },
+      );
+    }
+
+    // No network URL, use local asset
+    return Image.asset(
+      assetPath,
+      fit: BoxFit.cover,
+      errorBuilder: (context, error, stackTrace) {
+        return AspectRatio(
+          aspectRatio: 9 / 16,
+          child: Container(
+            color: AppColors.backgroundSecondary,
+            child: Center(
+              child: Icon(
+                Icons.auto_awesome,
+                color: AppColors.primary.withValues(alpha: 0.5),
+                size: 32,
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
 }
 
 /// Full screen art viewer with Hero animation.
@@ -183,20 +221,7 @@ class ArtViewerScreen extends StatelessWidget {
               child: Center(
                 child: Hero(
                   tag: 'gallery_${art.id}',
-                  child: Image.network(
-                    art.imageUrl,
-                    fit: BoxFit.contain,
-                    loadingBuilder: (context, child, loadingProgress) {
-                      if (loadingProgress == null) return child;
-                      return Center(
-                        child: CircularProgressIndicator(
-                          valueColor: AlwaysStoppedAnimation<Color>(
-                            AppColors.primary,
-                          ),
-                        ),
-                      );
-                    },
-                  ),
+                  child: _buildFullImage(),
                 ),
               ),
             ),
@@ -345,6 +370,38 @@ class ArtViewerScreen extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildFullImage() {
+    final assetPath = TarotDeckAssets.getCardByName(art.cardName);
+
+    if (art.imageUrl.isNotEmpty) {
+      return Image.network(
+        art.imageUrl,
+        fit: BoxFit.contain,
+        loadingBuilder: (context, child, loadingProgress) {
+          if (loadingProgress == null) return child;
+          return Center(
+            child: CircularProgressIndicator(
+              valueColor: AlwaysStoppedAnimation<Color>(
+                AppColors.primary,
+              ),
+            ),
+          );
+        },
+        errorBuilder: (context, error, stackTrace) {
+          return Image.asset(
+            assetPath,
+            fit: BoxFit.contain,
+          );
+        },
+      );
+    }
+
+    return Image.asset(
+      assetPath,
+      fit: BoxFit.contain,
     );
   }
 }

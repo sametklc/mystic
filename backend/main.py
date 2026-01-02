@@ -19,6 +19,9 @@ from models.astrology_models import (
 )
 from services.astrology_service import AstrologyService
 
+# Tarot Interpretation
+from services.tarot_service import get_tarot_service
+
 # Firebase Admin SDK
 import firebase_admin
 from firebase_admin import credentials, firestore
@@ -137,10 +140,9 @@ class TarotVisualizationResponse(BaseModel):
 class TarotReadingRequest(BaseModel):
     """Request model for AI tarot reading."""
     question: str = Field(
-        ...,
-        min_length=5,
+        default="",
         max_length=300,
-        description="The seeker's question"
+        description="The seeker's question (empty for general reading)"
     )
     character_id: str = Field(
         default="madame_luna",
@@ -152,7 +154,15 @@ class TarotReadingRequest(BaseModel):
     )
     cards: list[str] = Field(
         default=[],
-        description="List of drawn card IDs"
+        description="List of drawn card names"
+    )
+    card_name: Optional[str] = Field(
+        default=None,
+        description="Primary card name for single card reading"
+    )
+    is_upright: bool = Field(
+        default=True,
+        description="Whether the card is upright or reversed"
     )
 
 
@@ -201,10 +211,12 @@ async def root():
 @app.get("/health")
 async def health_check():
     """Detailed health check."""
+    tarot_service = get_tarot_service()
     return {
         "status": "healthy",
         "firebase": app.state.db is not None,
         "replicate": os.getenv("REPLICATE_API_TOKEN") is not None,
+        "openai": tarot_service.is_configured,
     }
 
 
@@ -274,39 +286,47 @@ async def visualize_tarot(request: TarotVisualizationRequest):
 @app.post("/tarot/reading", response_model=TarotReadingResponse)
 async def generate_reading(request: TarotReadingRequest):
     """
-    Generate an AI-powered tarot reading interpretation.
-    This endpoint would use an LLM (e.g., via Replicate or OpenAI).
+    Generate an AI-powered tarot reading interpretation using OpenAI.
+
+    The interpretation is dynamically generated based on:
+    - The seeker's question
+    - The drawn card and its orientation (upright/reversed)
+    - The selected character's personality
+
+    If OPENAI_API_KEY is not configured, falls back to template responses.
     """
     try:
-        # For now, return a mock reading
-        # In production, this would call an LLM API
+        # Determine the card name
+        card_name = request.card_name
+        if not card_name and request.cards:
+            card_name = request.cards[0]
+        if not card_name:
+            card_name = "The Fool"  # Default card
 
-        character_styles = {
-            "madame_luna": "warm, intuitive, focused on emotions and love",
-            "elder_weiss": "wise, measured, focused on life path and career",
-            "nova": "analytical, cosmic, blending logic with astrology",
-            "shadow": "brutally honest, revealing hidden truths",
-        }
+        # Get the tarot interpretation service
+        tarot_service = get_tarot_service()
 
-        style = character_styles.get(request.character_id, character_styles["madame_luna"])
-
-        # Mock reading response
-        mock_reading = (
-            f"The cards speak to your question: '{request.question}'\n\n"
-            f"As your guide, I sense {style}...\n\n"
-            "The universe reveals that this is a time of transformation. "
-            "Trust your intuition and embrace the changes ahead."
+        # Generate dynamic interpretation
+        interpretation = await tarot_service.generate_reading_interpretation(
+            question=request.question,
+            card_name=card_name,
+            is_upright=request.is_upright,
+            character_id=request.character_id,
         )
+
+        # Build card list for response
+        cards_interpreted = request.cards if request.cards else [card_name]
 
         return TarotReadingResponse(
             success=True,
-            reading=mock_reading,
+            reading=interpretation,
             character_id=request.character_id,
-            cards_interpreted=request.cards,
+            cards_interpreted=cards_interpreted,
             error=None,
         )
 
     except Exception as e:
+        print(f"Reading generation error: {e}")
         return TarotReadingResponse(
             success=False,
             reading=None,
@@ -404,23 +424,21 @@ INSIGHT_POOL = [
 @app.post("/chat/message", response_model=ChatMessageResponse)
 async def send_chat_message(request: ChatMessageRequest):
     """
-    Send a message to the Oracle and receive a response.
-    In production, this would use an LLM for dynamic responses.
+    Send a message to the Oracle and receive a dynamic AI-powered response.
+
+    Uses OpenAI to generate contextual, character-appropriate responses.
+    Falls back to template responses if OpenAI is not configured.
     """
-    import random
-
     try:
-        character = CHARACTER_CHAT_PERSONALITIES.get(
-            request.character_id,
-            CHARACTER_CHAT_PERSONALITIES["madame_luna"]
+        # Get the tarot interpretation service
+        tarot_service = get_tarot_service()
+
+        # Generate dynamic chat response
+        response_text = await tarot_service.generate_chat_response(
+            message=request.message,
+            character_id=request.character_id,
+            reading_context=request.context,
         )
-
-        # Select a random response template and insight
-        response_template = random.choice(character["responses"])
-        insight = random.choice(INSIGHT_POOL)
-
-        # Generate response
-        response_text = response_template.format(insight=insight)
 
         return ChatMessageResponse(
             success=True,
@@ -430,6 +448,7 @@ async def send_chat_message(request: ChatMessageRequest):
         )
 
     except Exception as e:
+        print(f"Chat error: {e}")
         return ChatMessageResponse(
             success=False,
             response=None,

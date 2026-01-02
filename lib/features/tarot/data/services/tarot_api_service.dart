@@ -66,6 +66,8 @@ class TarotApiService {
   /// [spreadType] - Type of tarot spread (default: single card).
   /// [visionaryMode] - Whether to generate AI artwork (default: true).
   /// [cardName] - The name of the selected card.
+  /// [isUpright] - Whether the card is upright or reversed.
+  /// [characterId] - The Oracle character ID.
   ///
   /// Returns a [TarotReadingModel] with the generated reading.
   /// Throws [TarotApiException] if the request fails.
@@ -75,6 +77,8 @@ class TarotApiService {
     SpreadType spreadType = SpreadType.single,
     bool visionaryMode = true,
     String? cardName,
+    bool isUpright = true,
+    String characterId = 'madame_luna',
   }) async {
     try {
       // Step 1: Get the tarot reading interpretation
@@ -82,9 +86,11 @@ class TarotApiService {
         '/tarot/reading',
         data: {
           'question': question,
-          'character_id': 'madame_luna',
+          'character_id': characterId,
           'spread_type': spreadType.value,
           'cards': cardName != null ? [cardName] : [],
+          'card_name': cardName,
+          'is_upright': isUpright,
         },
       );
 
@@ -128,7 +134,7 @@ class TarotApiService {
           name: cardName,
           meaning: reading,
           imageUrl: imageUrl ?? '',
-          isUpright: true, // TODO: Randomize this
+          isUpright: isUpright,
         ));
       }
 

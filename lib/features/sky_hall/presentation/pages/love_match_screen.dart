@@ -29,6 +29,10 @@ class _LoveMatchScreenState extends ConsumerState<LoveMatchScreen> {
 
   bool _showResults = false;
 
+  void _dismissKeyboard() {
+    FocusScope.of(context).unfocus();
+  }
+
   @override
   Widget build(BuildContext context) {
     final synastryState = ref.watch(synastryProvider);
@@ -43,7 +47,10 @@ class _LoveMatchScreenState extends ConsumerState<LoveMatchScreen> {
       );
     }
 
-    return SingleChildScrollView(
+    return GestureDetector(
+      onTap: _dismissKeyboard,
+      behavior: HitTestBehavior.opaque,
+      child: SingleChildScrollView(
       padding: const EdgeInsets.all(AppConstants.spacingMedium),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -73,6 +80,7 @@ class _LoveMatchScreenState extends ConsumerState<LoveMatchScreen> {
 
           const SizedBox(height: AppConstants.spacingLarge),
         ],
+      ),
       ),
     );
   }
@@ -304,6 +312,8 @@ class _LoveMatchScreenState extends ConsumerState<LoveMatchScreen> {
           style: AppTypography.bodyMedium.copyWith(
             color: AppColors.textPrimary,
           ),
+          textInputAction: TextInputAction.done,
+          onFieldSubmitted: (_) => _dismissKeyboard(),
           decoration: InputDecoration(
             hintText: hint,
             hintStyle: AppTypography.bodyMedium.copyWith(
@@ -445,6 +455,7 @@ class _LoveMatchScreenState extends ConsumerState<LoveMatchScreen> {
                 style: AppTypography.bodyMedium.copyWith(
                   color: AppColors.textPrimary,
                 ),
+                textInputAction: TextInputAction.next,
                 decoration: InputDecoration(
                   hintText: 'Latitude',
                   hintStyle: AppTypography.bodyMedium.copyWith(
@@ -471,6 +482,8 @@ class _LoveMatchScreenState extends ConsumerState<LoveMatchScreen> {
                 style: AppTypography.bodyMedium.copyWith(
                   color: AppColors.textPrimary,
                 ),
+                textInputAction: TextInputAction.done,
+                onFieldSubmitted: (_) => _dismissKeyboard(),
                 decoration: InputDecoration(
                   hintText: 'Longitude',
                   hintStyle: AppTypography.bodyMedium.copyWith(
@@ -569,6 +582,7 @@ class _LoveMatchScreenState extends ConsumerState<LoveMatchScreen> {
   }
 
   void _onCalculate() {
+    _dismissKeyboard();
     final user = ref.read(userProvider);
 
     // Validate user data

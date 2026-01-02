@@ -5,6 +5,7 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_typography.dart';
+import '../../../tarot/data/tarot_deck_assets.dart';
 import '../../domain/models/grimoire_entry_model.dart';
 
 /// A card displaying a journal entry in the Grimoire.
@@ -220,56 +221,76 @@ class JournalEntryCard extends StatelessWidget {
   }
 
   Widget _buildThumbnail() {
-    if (entry.hasImage) {
-      return Container(
-        width: 56,
-        height: 80,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(
-            color: AppColors.primary.withValues(alpha: 0.3),
-            width: 1,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: AppColors.primary.withValues(alpha: 0.1),
-              blurRadius: 8,
-              spreadRadius: 0,
-            ),
-          ],
+    // Get local asset path for fallback
+    final assetPath = TarotDeckAssets.getCardByName(entry.cardName);
+
+    return Container(
+      width: 56,
+      height: 80,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: AppColors.primary.withValues(alpha: 0.3),
+          width: 1,
         ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(7),
-          child: Image.network(
-            entry.imageUrl!,
-            fit: BoxFit.cover,
-            loadingBuilder: (context, child, loadingProgress) {
-              if (loadingProgress == null) return child;
-              return Container(
-                color: AppColors.backgroundSecondary,
-                child: Center(
-                  child: SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 1.5,
-                      valueColor: AlwaysStoppedAnimation<Color>(
-                        AppColors.primary.withValues(alpha: 0.5),
-                      ),
-                    ),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.primary.withValues(alpha: 0.1),
+            blurRadius: 8,
+            spreadRadius: 0,
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(7),
+        child: _buildThumbnailImage(assetPath),
+      ),
+    );
+  }
+
+  Widget _buildThumbnailImage(String assetPath) {
+    // Priority 1: Network image (AI-generated)
+    if (entry.hasImage) {
+      return Image.network(
+        entry.imageUrl!,
+        fit: BoxFit.cover,
+        loadingBuilder: (context, child, loadingProgress) {
+          if (loadingProgress == null) return child;
+          return Container(
+            color: AppColors.backgroundSecondary,
+            child: Center(
+              child: SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(
+                  strokeWidth: 1.5,
+                  valueColor: AlwaysStoppedAnimation<Color>(
+                    AppColors.primary.withValues(alpha: 0.5),
                   ),
                 ),
-              );
-            },
-            errorBuilder: (context, error, stackTrace) {
-              return _buildPlaceholderThumbnail();
-            },
-          ),
-        ),
+              ),
+            ),
+          );
+        },
+        errorBuilder: (context, error, stackTrace) {
+          // Fallback to local asset
+          return _buildAssetThumbnail(assetPath);
+        },
       );
     }
 
-    return _buildPlaceholderThumbnail();
+    // Priority 2: Local asset image (standard deck)
+    return _buildAssetThumbnail(assetPath);
+  }
+
+  Widget _buildAssetThumbnail(String assetPath) {
+    return Image.asset(
+      assetPath,
+      fit: BoxFit.cover,
+      errorBuilder: (context, error, stackTrace) {
+        return _buildPlaceholderThumbnail();
+      },
+    );
   }
 
   Widget _buildPlaceholderThumbnail() {

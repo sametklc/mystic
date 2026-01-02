@@ -13,6 +13,7 @@ import '../../../../shared/widgets/mystic_audio_player/mystic_audio_player.dart'
 import '../../../chat/presentation/pages/chat_screen.dart';
 import '../../data/providers/tarot_provider.dart';
 import '../../data/services/tarot_api_service.dart';
+import '../../data/tarot_deck_assets.dart';
 import '../widgets/flip_card.dart';
 import '../widgets/swirling_particles.dart';
 import '../widgets/typewriter_text.dart';
@@ -31,12 +32,20 @@ class TarotRevealScreen extends ConsumerStatefulWidget {
   /// The name of the selected card.
   final String cardName;
 
+  /// Whether the card is upright (true) or reversed (false).
+  final bool isUpright;
+
+  /// The character ID providing the reading.
+  final String characterId;
+
   const TarotRevealScreen({
     super.key,
     required this.question,
     required this.visionaryMode,
     required this.cardIndex,
     required this.cardName,
+    this.isUpright = true,
+    this.characterId = 'madame_luna',
   });
 
   @override
@@ -112,6 +121,8 @@ class _TarotRevealScreenState extends ConsumerState<TarotRevealScreen>
           spreadType: SpreadType.single,
           visionaryMode: widget.visionaryMode,
           cardName: widget.cardName,
+          isUpright: widget.isUpright,
+          characterId: widget.characterId,
         );
   }
 
@@ -263,6 +274,13 @@ class _TarotRevealScreenState extends ConsumerState<TarotRevealScreen>
     final reading = state.reading;
     final primaryCard = reading?.primaryCard;
 
+    // Get the card name for asset lookup
+    final cardName = primaryCard?.name ?? widget.cardName;
+
+    // Get asset path for standard deck (non-visionary mode)
+    // Also used as fallback if AI image fails to load
+    final assetPath = TarotDeckAssets.getCardByName(cardName);
+
     return AnimatedBuilder(
       animation: _pulseController,
       builder: (context, child) {
@@ -281,8 +299,11 @@ class _TarotRevealScreenState extends ConsumerState<TarotRevealScreen>
             height: 340,
           ),
           front: TarotCardFrontLarge(
+            // Use network image only in Visionary Mode
             imageUrl: widget.visionaryMode ? reading?.imageUrl : null,
-            cardName: primaryCard?.name ?? widget.cardName,
+            // Always provide asset path as fallback
+            assetPath: assetPath,
+            cardName: cardName,
             isUpright: primaryCard?.isUpright ?? true,
             isLoading: isImageLoading,
             width: 200,

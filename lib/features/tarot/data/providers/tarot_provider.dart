@@ -78,12 +78,17 @@ class TarotReadingNotifier extends StateNotifier<TarotReadingState> {
   ///
   /// Updates state through: loading → (progress updates) → success/error
   /// Also persists the reading to Firebase after successful generation.
+  ///
+  /// [isUpright] - Whether the card is upright (true) or reversed (false).
+  /// [characterId] - The Oracle character providing the reading.
   Future<void> generateReading({
     required String userId,
     required String question,
     SpreadType spreadType = SpreadType.single,
     bool visionaryMode = true,
     String? cardName,
+    bool isUpright = true,
+    String characterId = 'madame_luna',
   }) async {
     // Start loading
     state = TarotReadingState.loading(progress: 0.1);
@@ -98,6 +103,8 @@ class TarotReadingNotifier extends StateNotifier<TarotReadingState> {
         spreadType: spreadType,
         visionaryMode: visionaryMode,
         cardName: cardName,
+        isUpright: isUpright,
+        characterId: characterId,
       );
 
       state = TarotReadingState.success(reading);
@@ -106,6 +113,7 @@ class TarotReadingNotifier extends StateNotifier<TarotReadingState> {
       _persistReadingToFirebase(
         question: question,
         reading: reading,
+        characterId: characterId,
       );
     } on TarotApiException catch (e) {
       state = TarotReadingState.error(e.message);
@@ -118,6 +126,7 @@ class TarotReadingNotifier extends StateNotifier<TarotReadingState> {
   Future<void> _persistReadingToFirebase({
     required String question,
     required TarotReadingModel reading,
+    String characterId = 'madame_luna',
   }) async {
     try {
       final primaryCard = reading.primaryCard;
@@ -138,7 +147,7 @@ class TarotReadingNotifier extends StateNotifier<TarotReadingState> {
         isUpright: primaryCard.isUpright,
         interpretation: reading.interpretation,
         temporaryImageUrl: reading.imageUrl,
-        characterId: 'madame_luna',
+        characterId: characterId,
       );
       print('Reading persisted to Firebase successfully!');
 

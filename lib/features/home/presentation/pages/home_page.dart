@@ -43,37 +43,43 @@ class _HomePageState extends ConsumerState<HomePage> {
             // Use smaller spacing on shorter screens
             final isCompact = constraints.maxHeight < 700;
 
-            return Column(
-              children: [
-                // Header Section
-                _buildHeader(context),
-
-                Spacer(flex: isCompact ? 1 : 2),
-
-                // App Title
-                _buildAppTitle(),
-
-                SizedBox(height: isCompact ? 4 : AppConstants.spacingSmall),
-
-                // Tagline based on selected character
-                _buildCharacterTagline(),
-
-                Spacer(flex: isCompact ? 1 : 2),
-
-                // Character Carousel (~55-60% of screen)
-                const CharacterCarousel(),
-
-                Spacer(flex: isCompact ? 1 : 2),
-
-                // Daily Rituals Section - wrapped in Flexible to prevent overflow
-                Flexible(
-                  flex: 0,
-                  child: _buildDailyRitualsSection(context, isCompact),
+            return SingleChildScrollView(
+              physics: const BouncingScrollPhysics(),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  minHeight: constraints.maxHeight,
                 ),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    // Header Section
+                    _buildHeader(context),
 
-                // Bottom padding for bottom navigation bar
-                SizedBox(height: isCompact ? 70 : 80),
-              ],
+                    SizedBox(height: isCompact ? 8 : 16),
+
+                    // App Title
+                    _buildAppTitle(),
+
+                    SizedBox(height: isCompact ? 4 : AppConstants.spacingSmall),
+
+                    // Tagline based on selected character
+                    _buildCharacterTagline(),
+
+                    SizedBox(height: isCompact ? 8 : 16),
+
+                    // Character Carousel (~55-60% of screen)
+                    const CharacterCarousel(),
+
+                    SizedBox(height: isCompact ? 8 : 16),
+
+                    // Daily Rituals Section
+                    _buildDailyRitualsSection(context, isCompact),
+
+                    // Bottom padding for bottom navigation bar
+                    SizedBox(height: isCompact ? 70 : 80),
+                  ],
+                ),
+              ),
             );
           },
         ),

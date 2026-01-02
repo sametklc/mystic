@@ -80,6 +80,13 @@ flutter:
     - assets/icons/
     - assets/animations/
     - assets/fonts/
+    # Tarot card assets
+    - assets/cards/
+    - assets/cards/major/
+    - assets/cards/minor/wands/
+    - assets/cards/minor/cups/
+    - assets/cards/minor/swords/
+    - assets/cards/minor/pentacles/
 
   # fonts:
   #   - family: Cinzel

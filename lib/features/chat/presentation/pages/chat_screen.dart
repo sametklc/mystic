@@ -109,10 +109,15 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
 
     HapticFeedback.lightImpact();
     _messageController.clear();
+    _dismissKeyboard();
 
     ref.read(chatProvider(_chatParams).notifier).sendMessage(message);
 
     _scrollToBottom();
+  }
+
+  void _dismissKeyboard() {
+    _focusNode.unfocus();
   }
 
   @override
@@ -126,21 +131,29 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
       }
     });
 
-    return MysticBackgroundScaffold(
-      child: SafeArea(
-        child: Column(
-          children: [
-            // Header
-            _buildHeader(),
+    return Scaffold(
+      resizeToAvoidBottomInset: true,
+      backgroundColor: Colors.transparent,
+      body: MysticBackgroundScaffold(
+        child: SafeArea(
+          child: Column(
+            children: [
+              // Header
+              _buildHeader(),
 
-            // Messages
-            Expanded(
-              child: _buildMessageList(chatState),
-            ),
+              // Messages
+              Expanded(
+                child: GestureDetector(
+                  onTap: _dismissKeyboard,
+                  behavior: HitTestBehavior.opaque,
+                  child: _buildMessageList(chatState),
+                ),
+              ),
 
-            // Input
-            _buildInputArea(chatState.isLoading),
-          ],
+              // Input
+              _buildInputArea(chatState.isLoading),
+            ],
+          ),
         ),
       ),
     );

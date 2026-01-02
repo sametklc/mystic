@@ -216,17 +216,37 @@ class TarotCardBackLarge extends StatelessWidget {
 }
 
 /// The front of the tarot card showing the image.
+///
+/// Supports three image sources:
+/// 1. Network URL (AI-generated images from Visionary Mode)
+/// 2. Local asset (standard deck images)
+/// 3. Fallback placeholder
 class TarotCardFrontLarge extends StatelessWidget {
+  /// Network URL for AI-generated image (Visionary Mode).
   final String? imageUrl;
+
+  /// Local asset path for standard deck image.
+  final String? assetPath;
+
+  /// The card name for display.
   final String cardName;
+
+  /// Whether the card is upright or reversed.
   final bool isUpright;
+
+  /// Card width.
   final double width;
+
+  /// Card height.
   final double height;
+
+  /// Whether the image is still loading.
   final bool isLoading;
 
   const TarotCardFrontLarge({
     super.key,
     this.imageUrl,
+    this.assetPath,
     required this.cardName,
     this.isUpright = true,
     this.width = 200,
@@ -268,16 +288,23 @@ class TarotCardFrontLarge extends StatelessWidget {
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(14),
-        child: _buildCardImage(),
+        child: Transform(
+          // Apply rotation for reversed cards
+          alignment: Alignment.center,
+          transform: Matrix4.identity()..rotateZ(isUpright ? 0 : 3.14159),
+          child: _buildCardImage(),
+        ),
       ),
     );
   }
 
   Widget _buildCardImage() {
+    // Show loading state
     if (isLoading) {
       return _buildShimmerPlaceholder();
     }
 
+    // Priority 1: Network image (AI-generated, Visionary Mode)
     if (imageUrl != null && imageUrl!.isNotEmpty) {
       return Image.network(
         imageUrl!,
@@ -287,12 +314,33 @@ class TarotCardFrontLarge extends StatelessWidget {
           return _buildShimmerPlaceholder();
         },
         errorBuilder: (context, error, stackTrace) {
+          // Try local asset as fallback
+          if (assetPath != null) {
+            return _buildAssetImage();
+          }
           return _buildFallbackImage();
         },
       );
     }
 
+    // Priority 2: Local asset image (standard deck)
+    if (assetPath != null && assetPath!.isNotEmpty) {
+      return _buildAssetImage();
+    }
+
+    // Priority 3: Fallback placeholder
     return _buildFallbackImage();
+  }
+
+  Widget _buildAssetImage() {
+    return Image.asset(
+      assetPath!,
+      fit: BoxFit.cover,
+      errorBuilder: (context, error, stackTrace) {
+        // Asset not found, show fallback
+        return _buildFallbackImage();
+      },
+    );
   }
 
   Widget _buildShimmerPlaceholder() {

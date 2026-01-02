@@ -7,6 +7,7 @@ uvicorn[standard]==0.34.0
 
 # AI & ML
 replicate==1.0.4
+openai==1.58.1
 
 # Firebase
 firebase-admin==6.6.0
