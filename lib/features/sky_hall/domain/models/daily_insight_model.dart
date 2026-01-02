@@ -61,24 +61,25 @@ class DailyInsight {
   }
 
   /// Get the appropriate icon data for the moon phase.
+  /// Icons represent the visual appearance of each lunar phase.
   IconData get moonPhaseIconData {
     switch (moonPhaseIcon) {
       case 'new_moon':
-        return Icons.dark_mode;
+        return Icons.brightness_1_outlined; // Empty circle (dark moon)
       case 'waxing_crescent':
-        return Icons.nightlight_round;
+        return Icons.nightlight_round; // Crescent facing right
       case 'first_quarter':
-        return Icons.first_page; // Use custom icon in production
+        return Icons.contrast; // Half illuminated
       case 'waxing_gibbous':
-        return Icons.brightness_3;
+        return Icons.brightness_2; // Almost full (right side dark)
       case 'full_moon':
-        return Icons.circle;
+        return Icons.brightness_1; // Full circle (fully lit)
       case 'waning_gibbous':
-        return Icons.brightness_2;
+        return Icons.brightness_3; // Almost full (left side dark)
       case 'last_quarter':
-        return Icons.last_page; // Use custom icon in production
+        return Icons.contrast; // Half illuminated
       case 'waning_crescent':
-        return Icons.nightlight_outlined;
+        return Icons.nightlight_outlined; // Crescent facing left
       default:
         return Icons.nightlight_round;
     }

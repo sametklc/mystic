@@ -140,6 +140,16 @@ class _HomePageState extends ConsumerState<HomePage> {
   }
 
   Widget _buildMoonPhase() {
+    final insightState = ref.watch(dailyInsightProvider);
+
+    // Get moon phase data from provider
+    final moonPhase = insightState.hasInsight
+        ? insightState.insight!.moonPhase
+        : 'Loading...';
+    final moonIcon = insightState.hasInsight
+        ? _getMoonPhaseIcon(insightState.insight!.moonPhaseIcon)
+        : Icons.nightlight_round;
+
     return Container(
       padding: const EdgeInsets.symmetric(
         horizontal: AppConstants.spacingSmall,
@@ -154,13 +164,13 @@ class _HomePageState extends ConsumerState<HomePage> {
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(
-            Icons.nightlight_round,
+            moonIcon,
             size: 16,
             color: AppColors.primary,
           ),
           const SizedBox(width: AppConstants.spacingXSmall),
           Text(
-            'Waning Gibbous',
+            moonPhase,
             style: AppTypography.labelSmall.copyWith(
               color: AppColors.textSecondary,
             ),
@@ -168,6 +178,30 @@ class _HomePageState extends ConsumerState<HomePage> {
         ],
       ),
     );
+  }
+
+  /// Get the appropriate icon for the moon phase
+  IconData _getMoonPhaseIcon(String moonPhaseIcon) {
+    switch (moonPhaseIcon) {
+      case 'new_moon':
+        return Icons.brightness_1_outlined; // Empty circle
+      case 'waxing_crescent':
+        return Icons.nightlight_round; // Crescent facing right
+      case 'first_quarter':
+        return Icons.contrast; // Half moon
+      case 'waxing_gibbous':
+        return Icons.brightness_2; // Almost full
+      case 'full_moon':
+        return Icons.brightness_1; // Full circle
+      case 'waning_gibbous':
+        return Icons.brightness_3; // Almost full (other side)
+      case 'last_quarter':
+        return Icons.contrast; // Half moon
+      case 'waning_crescent':
+        return Icons.nightlight_outlined; // Crescent facing left
+      default:
+        return Icons.nightlight_round;
+    }
   }
 
   Widget _buildCoinBalance() {
