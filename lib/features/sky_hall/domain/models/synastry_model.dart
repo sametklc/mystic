@@ -1,5 +1,34 @@
 import 'natal_chart_model.dart';
 
+/// Detailed 3-section AI analysis for synastry.
+class DetailedAnalysis {
+  final String chemistryAnalysis;
+  final String emotionalConnection;
+  final String challenges;
+  final String summary;
+
+  const DetailedAnalysis({
+    required this.chemistryAnalysis,
+    required this.emotionalConnection,
+    required this.challenges,
+    required this.summary,
+  });
+
+  factory DetailedAnalysis.fromJson(Map<String, dynamic> json) {
+    return DetailedAnalysis(
+      chemistryAnalysis: json['chemistry_analysis'] ?? '',
+      emotionalConnection: json['emotional_connection'] ?? '',
+      challenges: json['challenges'] ?? '',
+      summary: json['summary'] ?? '',
+    );
+  }
+
+  bool get hasContent =>
+      chemistryAnalysis.isNotEmpty ||
+      emotionalConnection.isNotEmpty ||
+      challenges.isNotEmpty;
+}
+
 /// An aspect between two people's charts.
 class SynastryAspect {
   final String person1Planet;
@@ -52,6 +81,7 @@ class SynastryReport {
   final NatalChart user2Chart;
   final String aiSummaryPrompt;
   final String? aiSummary;
+  final DetailedAnalysis? detailedAnalysis;
 
   const SynastryReport({
     this.user1Name,
@@ -68,6 +98,7 @@ class SynastryReport {
     required this.user2Chart,
     required this.aiSummaryPrompt,
     this.aiSummary,
+    this.detailedAnalysis,
   });
 
   factory SynastryReport.fromJson(Map<String, dynamic> json) {
@@ -89,6 +120,9 @@ class SynastryReport {
       user2Chart: NatalChart.fromJson(json['user2_chart'] ?? {}),
       aiSummaryPrompt: json['ai_summary_prompt'] ?? '',
       aiSummary: json['ai_summary'],
+      detailedAnalysis: json['detailed_analysis'] != null
+          ? DetailedAnalysis.fromJson(json['detailed_analysis'])
+          : null,
     );
   }
 

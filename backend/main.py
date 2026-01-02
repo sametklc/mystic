@@ -15,9 +15,10 @@ from pydantic import BaseModel, Field
 # Astrology
 from models.astrology_models import (
     NatalChartRequest, NatalChartResponse,
-    SynastryRequest, SynastryReport
+    SynastryRequest, SynastryReport, DetailedAnalysis
 )
 from services.astrology_service import AstrologyService
+from services.synastry_analysis_service import get_synastry_service
 
 # Tarot Interpretation
 from services.tarot_service import get_tarot_service
@@ -557,7 +558,17 @@ async def calculate_natal_chart(request: NatalChartRequest):
 async def calculate_synastry(request: SynastryRequest):
     """
     Calculate synastry (compatibility) between two natal charts.
-    Returns compatibility scores, key aspects, and both charts.
+
+    Uses a weighted planetary aspect scoring algorithm:
+    - Sun/Moon aspects: Soul connection (+15 pts conjunction/trine, -5 pts square)
+    - Venus/Mars aspects: Chemistry (+10-15 pts flowing aspects)
+    - Mercury aspects: Communication (+5/-5 pts)
+    - Saturn aspects: Stability/Challenges (+5 trine, -10 square)
+
+    Also generates AI-powered detailed 3-section analysis:
+    - Chemistry Analysis (Venus/Mars aspects)
+    - Emotional Connection (Sun/Moon/Mercury aspects)
+    - Challenges (Saturn/Pluto/Square aspects)
     """
     try:
         user1_data = {
@@ -577,11 +588,50 @@ async def calculate_synastry(request: SynastryRequest):
             "name": request.user2.name or "Person 2"
         }
 
+        # Get base synastry report from AstrologyService
         report = AstrologyService.calculate_synastry(user1_data, user2_data)
+
+        # Get the enhanced synastry analysis service
+        synastry_service = get_synastry_service()
+
+        # Calculate weighted scores using the new algorithm
+        weighted_scores = synastry_service.calculate_weighted_score(
+            aspects=report.get("key_aspects", []),
+            chart1=report.get("user1_chart", {}),
+            chart2=report.get("user2_chart", {}),
+        )
+
+        # Update scores with weighted calculation
+        report["compatibility_score"] = weighted_scores["overall"]
+        report["emotional_compatibility"] = weighted_scores["emotional"]
+        report["intellectual_compatibility"] = weighted_scores["intellectual"]
+        report["physical_compatibility"] = weighted_scores["chemistry"]  # Map to physical
+
+        # Generate AI-powered detailed analysis
+        detailed_analysis = await synastry_service.generate_detailed_analysis(
+            chart1=report.get("user1_chart", {}),
+            chart2=report.get("user2_chart", {}),
+            scores=weighted_scores,
+            aspects=report.get("key_aspects", []),
+        )
+
+        # Add detailed analysis to report
+        report["detailed_analysis"] = DetailedAnalysis(
+            chemistry_analysis=detailed_analysis.get("chemistry_analysis", ""),
+            emotional_connection=detailed_analysis.get("emotional_connection", ""),
+            challenges=detailed_analysis.get("challenges", ""),
+            summary=detailed_analysis.get("summary", ""),
+        )
+
+        # Also set the AI summary for backwards compatibility
+        report["ai_summary"] = detailed_analysis.get("summary", "")
+
         return SynastryReport(**report)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Synastry calculation error: {str(e)}")
 
 

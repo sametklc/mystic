@@ -1,13 +1,15 @@
 import 'dart:math' as math;
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 import '../../../../core/constants/constants.dart';
 import '../../domain/models/synastry_model.dart';
 
-/// Display synastry compatibility results.
-class CompatibilityResultView extends StatelessWidget {
+/// Display synastry compatibility results with detailed AI analysis.
+class CompatibilityResultView extends StatefulWidget {
   final SynastryReport report;
   final VoidCallback onBack;
 
@@ -16,6 +18,18 @@ class CompatibilityResultView extends StatelessWidget {
     required this.report,
     required this.onBack,
   });
+
+  @override
+  State<CompatibilityResultView> createState() => _CompatibilityResultViewState();
+}
+
+class _CompatibilityResultViewState extends State<CompatibilityResultView> {
+  // Track expanded state for each analysis section
+  bool _chemistryExpanded = false;
+  bool _emotionalExpanded = false;
+  bool _challengesExpanded = false;
+
+  SynastryReport get report => widget.report;
 
   @override
   Widget build(BuildContext context) {
@@ -27,7 +41,7 @@ class CompatibilityResultView extends StatelessWidget {
           Align(
             alignment: Alignment.centerLeft,
             child: GestureDetector(
-              onTap: onBack,
+              onTap: widget.onBack,
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 decoration: BoxDecoration(
@@ -72,12 +86,32 @@ class CompatibilityResultView extends StatelessWidget {
             ),
           ).animate().fadeIn(delay: 400.ms),
 
+          // Summary text
+          if (report.detailedAnalysis?.summary.isNotEmpty == true) ...[
+            const SizedBox(height: AppConstants.spacingSmall),
+            Text(
+              report.detailedAnalysis!.summary,
+              style: GoogleFonts.cinzel(
+                fontSize: 14,
+                color: AppColors.textSecondary,
+                fontStyle: FontStyle.italic,
+              ),
+              textAlign: TextAlign.center,
+            ).animate().fadeIn(delay: 500.ms),
+          ],
+
           const SizedBox(height: AppConstants.spacingLarge),
 
           // Category Scores
           _buildCategoryScores(),
 
           const SizedBox(height: AppConstants.spacingLarge),
+
+          // NEW: Detailed AI Analysis Sections
+          if (report.detailedAnalysis?.hasContent == true) ...[
+            _buildDetailedAnalysisSections(),
+            const SizedBox(height: AppConstants.spacingLarge),
+          ],
 
           // Aspect Summary
           _buildAspectSummary(),
@@ -89,6 +123,200 @@ class CompatibilityResultView extends StatelessWidget {
 
           const SizedBox(height: AppConstants.spacingLarge),
         ],
+      ),
+    );
+  }
+
+  /// Build the three expandable analysis sections
+  Widget _buildDetailedAnalysisSections() {
+    final analysis = report.detailedAnalysis!;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'COSMIC INSIGHTS',
+          style: AppTypography.labelMedium.copyWith(
+            color: AppColors.textTertiary,
+            letterSpacing: 2,
+          ),
+        ),
+        const SizedBox(height: AppConstants.spacingSmall),
+
+        // Chemistry Section (Fire icon - Orange)
+        if (analysis.chemistryAnalysis.isNotEmpty)
+          _buildExpandableAnalysisCard(
+            title: 'Chemistry & Attraction',
+            content: analysis.chemistryAnalysis,
+            icon: Icons.local_fire_department,
+            color: Colors.deepOrange,
+            isExpanded: _chemistryExpanded,
+            onTap: () {
+              HapticFeedback.selectionClick();
+              setState(() => _chemistryExpanded = !_chemistryExpanded);
+            },
+          ).animate().fadeIn(delay: 600.ms, duration: 400.ms),
+
+        const SizedBox(height: AppConstants.spacingSmall),
+
+        // Emotional Connection Section (Heart icon - Pink)
+        if (analysis.emotionalConnection.isNotEmpty)
+          _buildExpandableAnalysisCard(
+            title: 'Emotional Connection',
+            content: analysis.emotionalConnection,
+            icon: Icons.favorite,
+            color: Colors.pink,
+            isExpanded: _emotionalExpanded,
+            onTap: () {
+              HapticFeedback.selectionClick();
+              setState(() => _emotionalExpanded = !_emotionalExpanded);
+            },
+          ).animate().fadeIn(delay: 700.ms, duration: 400.ms),
+
+        const SizedBox(height: AppConstants.spacingSmall),
+
+        // Challenges Section (Warning icon - Amber)
+        if (analysis.challenges.isNotEmpty)
+          _buildExpandableAnalysisCard(
+            title: 'Growth Opportunities',
+            content: analysis.challenges,
+            icon: Icons.warning_amber_rounded,
+            color: Colors.amber,
+            isExpanded: _challengesExpanded,
+            onTap: () {
+              HapticFeedback.selectionClick();
+              setState(() => _challengesExpanded = !_challengesExpanded);
+            },
+          ).animate().fadeIn(delay: 800.ms, duration: 400.ms),
+      ],
+    );
+  }
+
+  /// Build an expandable analysis card
+  Widget _buildExpandableAnalysisCard({
+    required String title,
+    required String content,
+    required IconData icon,
+    required Color color,
+    required bool isExpanded,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeInOut,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(AppConstants.borderRadiusLarge),
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              color.withOpacity(0.15),
+              color.withOpacity(0.05),
+            ],
+          ),
+          border: Border.all(
+            color: color.withOpacity(isExpanded ? 0.5 : 0.3),
+            width: isExpanded ? 1.5 : 1,
+          ),
+          boxShadow: isExpanded
+              ? [
+                  BoxShadow(
+                    color: color.withOpacity(0.2),
+                    blurRadius: 12,
+                    spreadRadius: 0,
+                  )
+                ]
+              : null,
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(AppConstants.borderRadiusLarge),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Header (always visible)
+              Padding(
+                padding: const EdgeInsets.all(AppConstants.spacingMedium),
+                child: Row(
+                  children: [
+                    // Icon with glow
+                    Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: color.withOpacity(0.2),
+                        boxShadow: [
+                          BoxShadow(
+                            color: color.withOpacity(0.3),
+                            blurRadius: 8,
+                            spreadRadius: 1,
+                          ),
+                        ],
+                      ),
+                      child: Icon(icon, color: color, size: 22),
+                    ),
+                    const SizedBox(width: 12),
+
+                    // Title
+                    Expanded(
+                      child: Text(
+                        title,
+                        style: AppTypography.titleSmall.copyWith(
+                          color: color,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+
+                    // Expand indicator
+                    AnimatedRotation(
+                      turns: isExpanded ? 0.5 : 0,
+                      duration: const Duration(milliseconds: 300),
+                      child: Icon(
+                        Icons.keyboard_arrow_down,
+                        color: color.withOpacity(0.7),
+                        size: 24,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              // Content (expandable)
+              AnimatedCrossFade(
+                firstChild: const SizedBox(width: double.infinity),
+                secondChild: Padding(
+                  padding: const EdgeInsets.only(
+                    left: AppConstants.spacingMedium,
+                    right: AppConstants.spacingMedium,
+                    bottom: AppConstants.spacingMedium,
+                  ),
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(AppConstants.spacingMedium),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(AppConstants.borderRadiusMedium),
+                    ),
+                    child: Text(
+                      content,
+                      style: AppTypography.bodyMedium.copyWith(
+                        color: AppColors.textPrimary,
+                        height: 1.6,
+                      ),
+                    ),
+                  ),
+                ),
+                crossFadeState: isExpanded
+                    ? CrossFadeState.showSecond
+                    : CrossFadeState.showFirst,
+                duration: const Duration(milliseconds: 300),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

@@ -107,6 +107,14 @@ class SynastryAspect(BaseModel):
     interpretation: str
 
 
+class DetailedAnalysis(BaseModel):
+    """Three-section detailed AI analysis."""
+    chemistry_analysis: str = Field(default="", description="Physical/romantic attraction analysis")
+    emotional_connection: str = Field(default="", description="Emotional understanding analysis")
+    challenges: str = Field(default="", description="Areas of friction and growth")
+    summary: str = Field(default="", description="One-sentence summary")
+
+
 class SynastryReport(BaseModel):
     """Complete synastry compatibility report."""
     user1_name: Optional[str] = None
@@ -133,6 +141,9 @@ class SynastryReport(BaseModel):
     # AI interpretation prompt (to be sent to OpenAI)
     ai_summary_prompt: str
     ai_summary: Optional[str] = None
+
+    # NEW: Detailed 3-section AI analysis
+    detailed_analysis: Optional[DetailedAnalysis] = None
 
 
 class TransitRequest(BaseModel):
