@@ -149,8 +149,6 @@ class _TarotRevealScreenState extends ConsumerState<TarotRevealScreen>
 
   @override
   void dispose() {
-    // Stop audio playback when leaving the screen
-    ref.read(audioPlayerProvider.notifier).stop();
     _pulseController.dispose();
     _revealController.dispose();
     super.dispose();
@@ -481,7 +479,7 @@ class _TarotRevealScreenState extends ConsumerState<TarotRevealScreen>
             if (_showListenButton && reading?.interpretation != null)
               ListenButton(
                 text: reading!.interpretation,
-                characterId: 'madame_luna',
+                characterId: widget.characterId,
                 onPlayStart: () {
                   HapticFeedback.lightImpact();
                 },
@@ -513,7 +511,7 @@ class _TarotRevealScreenState extends ConsumerState<TarotRevealScreen>
               PageRouteBuilder(
                 pageBuilder: (context, animation, secondaryAnimation) {
                   return ChatScreen(
-                    characterId: 'madame_luna',
+                    characterId: widget.characterId,
                     initialInterpretation: reading?.interpretation,
                     cardName: reading?.primaryCard?.name ?? widget.cardName,
                   );

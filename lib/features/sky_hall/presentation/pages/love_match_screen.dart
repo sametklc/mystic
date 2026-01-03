@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/constants/constants.dart';
 import '../../../../shared/providers/providers.dart';
 import '../../../../shared/widgets/widgets.dart';
+import '../../../home/presentation/providers/character_provider.dart';
 import '../../data/providers/sky_hall_provider.dart';
 import '../widgets/compatibility_result_view.dart';
 
@@ -57,11 +58,6 @@ class _LoveMatchScreenState extends ConsumerState<LoveMatchScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Header
-          _buildHeader(),
-
-          const SizedBox(height: AppConstants.spacingLarge),
-
           // Your Profile Summary
           _buildYourProfileCard(),
 
@@ -85,49 +81,6 @@ class _LoveMatchScreenState extends ConsumerState<LoveMatchScreen> {
       ),
       ),
     );
-  }
-
-  Widget _buildHeader() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: LinearGradient(
-                  colors: [
-                    Colors.pink.withOpacity(0.3),
-                    Colors.purple.withOpacity(0.3),
-                  ],
-                ),
-              ),
-              child: Icon(
-                Icons.favorite,
-                color: Colors.pink,
-                size: 24,
-              ),
-            ),
-            const SizedBox(width: AppConstants.spacingSmall),
-            Text(
-              'Cosmic Love Match',
-              style: AppTypography.headlineSmall.copyWith(
-                color: AppColors.textPrimary,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: AppConstants.spacingSmall),
-        Text(
-          'Discover the celestial chemistry between you and your partner.',
-          style: AppTypography.bodyMedium.copyWith(
-            color: AppColors.textSecondary,
-          ),
-        ),
-      ],
-    ).animate().fadeIn(duration: 400.ms);
   }
 
   Widget _buildYourProfileCard() {
@@ -582,10 +535,14 @@ class _LoveMatchScreenState extends ConsumerState<LoveMatchScreen> {
       'name': _partnerName ?? 'Partner',
     };
 
+    // Get selected guide character for AI analysis
+    final selectedCharacterId = ref.read(selectedCharacterIdProvider);
+
     // Calculate synastry
     ref.read(synastryProvider.notifier).calculateSynastry(
           user1Data: user1Data,
           user2Data: user2Data,
+          characterId: selectedCharacterId,
         );
 
     setState(() => _showResults = true);

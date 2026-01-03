@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -6,8 +7,60 @@ import '../../../../core/constants/constants.dart';
 import '../../../../shared/providers/providers.dart';
 import '../../../../shared/widgets/widgets.dart';
 
+/// Gender options for onboarding.
+enum Gender {
+  female,
+  male,
+  other;
+
+  String get label {
+    switch (this) {
+      case Gender.female:
+        return 'Female';
+      case Gender.male:
+        return 'Male';
+      case Gender.other:
+        return 'Other';
+    }
+  }
+
+  /// Venus symbol for female, Mars for male, Star for other
+  String get symbol {
+    switch (this) {
+      case Gender.female:
+        return '♀';
+      case Gender.male:
+        return '♂';
+      case Gender.other:
+        return '✧';
+    }
+  }
+
+  IconData get icon {
+    switch (this) {
+      case Gender.female:
+        return Icons.spa_rounded; // Rose-like
+      case Gender.male:
+        return Icons.shield_rounded; // Sword/Shield
+      case Gender.other:
+        return Icons.auto_awesome_rounded; // Cosmic star
+    }
+  }
+
+  Color get color {
+    switch (this) {
+      case Gender.female:
+        return const Color(0xFFFF6B9D); // Pink
+      case Gender.male:
+        return const Color(0xFF64B5F6); // Blue
+      case Gender.other:
+        return const Color(0xFFFFD54F); // Gold
+    }
+  }
+}
+
 /// The first step of the onboarding ritual.
-/// A cinematic experience where the user is greeted and asked for their name.
+/// A cinematic experience where the user is greeted and asked for their name and gender.
 class OnboardingNameScreen extends ConsumerStatefulWidget {
   /// Callback when the user completes this step
   final VoidCallback? onComplete;
@@ -31,9 +84,13 @@ class _OnboardingNameScreenState extends ConsumerState<OnboardingNameScreen>
   bool _showGreeting = false;
   bool _showQuestion = false;
   bool _showInput = false;
+  bool _showGenderSelector = false;
   bool _showButton = false;
   bool _isExiting = false;
   bool _hasValidName = false;
+
+  // Gender selection
+  Gender? _selectedGender;
 
   @override
   void initState() {
@@ -55,6 +112,10 @@ class _OnboardingNameScreenState extends ConsumerState<OnboardingNameScreen>
     if (hasValid != _hasValidName) {
       setState(() {
         _hasValidName = hasValid;
+        // Show gender selector when user starts typing a valid name
+        if (hasValid && !_showGenderSelector) {
+          _showGenderSelector = true;
+        }
       });
     }
   }
@@ -86,20 +147,31 @@ class _OnboardingNameScreenState extends ConsumerState<OnboardingNameScreen>
     }
   }
 
-  /// Show the continue button when name is valid
+  /// Check if we can proceed
+  bool get _canProceed => _hasValidName && _selectedGender != null;
+
+  /// Show the continue button when requirements are met
   void _maybeShowButton() {
-    if (_hasValidName && !_showButton) {
+    if (_canProceed && !_showButton) {
       setState(() => _showButton = true);
     }
   }
 
-  /// Handle submission of the name
+  void _onGenderSelected(Gender gender) {
+    HapticFeedback.selectionClick();
+    setState(() {
+      _selectedGender = gender;
+    });
+  }
+
+  /// Handle submission of the name and gender
   Future<void> _onSubmit() async {
     final name = _nameController.text.trim();
-    if (name.length < 2) return;
+    if (name.length < 2 || _selectedGender == null) return;
 
-    // Save the name to the provider
+    // Save the name and gender to the provider
     ref.read(userProvider.notifier).setName(name);
+    ref.read(userProvider.notifier).setGender(_selectedGender!.name);
 
     // Start exit animation
     setState(() => _isExiting = true);
@@ -113,8 +185,8 @@ class _OnboardingNameScreenState extends ConsumerState<OnboardingNameScreen>
 
   @override
   Widget build(BuildContext context) {
-    // Show button when name is valid
-    if (_hasValidName && !_showButton && _showInput) {
+    // Show button when requirements are met
+    if (_canProceed && !_showButton && _showInput) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _maybeShowButton();
       });
@@ -127,35 +199,51 @@ class _OnboardingNameScreenState extends ConsumerState<OnboardingNameScreen>
           child: GestureDetector(
             onTap: () => FocusScope.of(context).unfocus(),
             behavior: HitTestBehavior.opaque,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: AppConstants.spacingLarge,
-              ),
-              child: Column(
-                children: [
-                  const Spacer(flex: 3),
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                return SingleChildScrollView(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppConstants.spacingLarge,
+                  ),
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(
+                      minHeight: constraints.maxHeight,
+                    ),
+                    child: IntrinsicHeight(
+                      child: Column(
+                        children: [
+                          const Spacer(flex: 2),
 
-                  // Greeting Text
-                  _buildGreeting(),
+                          // Greeting Text
+                          _buildGreeting(),
 
-                  const SizedBox(height: AppConstants.spacingXXLarge),
+                          const SizedBox(height: AppConstants.spacingXXLarge),
 
-                  // Question Text
-                  _buildQuestion(),
+                          // Question Text
+                          _buildQuestion(),
 
-                  const SizedBox(height: AppConstants.spacingXLarge),
+                          const SizedBox(height: AppConstants.spacingXLarge),
 
-                  // Name Input
-                  _buildNameInput(),
+                          // Name Input
+                          _buildNameInput(),
 
-                  const Spacer(flex: 2),
+                          const SizedBox(height: AppConstants.spacingLarge),
 
-                  // Continue Button
-                  _buildContinueButton(),
+                          // Gender Selector
+                          _buildGenderSelector(),
 
-                  const SizedBox(height: AppConstants.spacingXXLarge),
-                ],
-              ),
+                          const Spacer(flex: 2),
+
+                          // Continue Button
+                          _buildContinueButton(),
+
+                          const SizedBox(height: AppConstants.spacingXXLarge),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              },
             ),
           ),
         ),
@@ -267,7 +355,9 @@ class _OnboardingNameScreenState extends ConsumerState<OnboardingNameScreen>
         focusNode: _focusNode,
         hintText: '...',
         textAlign: TextAlign.center,
-        onSubmitted: (_) => _onSubmit(),
+        onSubmitted: (_) {
+          if (_canProceed) _onSubmit();
+        },
         textStyle: AppTypography.headlineLarge.copyWith(
           color: AppColors.textPrimary,
           letterSpacing: 3,
@@ -310,8 +400,72 @@ class _OnboardingNameScreenState extends ConsumerState<OnboardingNameScreen>
     return input;
   }
 
+  Widget _buildGenderSelector() {
+    if (!_showGenderSelector) return const SizedBox(height: 60);
+
+    Widget selector = Column(
+      children: [
+        Text(
+          'I identify as...',
+          style: AppTypography.labelMedium.copyWith(
+            color: AppColors.textTertiary,
+            letterSpacing: 1,
+          ),
+        ),
+        const SizedBox(height: AppConstants.spacingMedium),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: Gender.values.map((gender) {
+            return Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              child: _GenderOption(
+                gender: gender,
+                isSelected: _selectedGender == gender,
+                onTap: () => _onGenderSelected(gender),
+              ),
+            );
+          }).toList(),
+        ),
+      ],
+    );
+
+    // Apply entrance animation
+    selector = selector
+        .animate()
+        .fadeIn(
+          duration: 600.ms,
+          curve: Curves.easeOut,
+        )
+        .slideY(
+          begin: 0.2,
+          end: 0,
+          duration: 600.ms,
+          curve: Curves.easeOutCubic,
+        );
+
+    // Apply exit animation if exiting
+    if (_isExiting) {
+      selector = selector
+          .animate()
+          .fadeOut(
+            delay: 100.ms,
+            duration: 500.ms,
+            curve: Curves.easeIn,
+          )
+          .slideY(
+            begin: 0,
+            end: -0.2,
+            delay: 100.ms,
+            duration: 500.ms,
+            curve: Curves.easeInCubic,
+          );
+    }
+
+    return selector;
+  }
+
   Widget _buildContinueButton() {
-    if (!_showButton || !_hasValidName) {
+    if (!_showButton || !_canProceed) {
       return const SizedBox(height: 56);
     }
 
@@ -353,6 +507,83 @@ class _OnboardingNameScreenState extends ConsumerState<OnboardingNameScreen>
     }
 
     return button;
+  }
+}
+
+/// A stylish gender option button with symbol and glow effect.
+class _GenderOption extends StatelessWidget {
+  final Gender gender;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  const _GenderOption({
+    required this.gender,
+    required this.isSelected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    // Neon Gold for selected state
+    const neonGold = Color(0xFFFFD700);
+    final genderColor = gender.color;
+
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 300),
+        width: 70,
+        height: 70,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: isSelected
+              ? neonGold.withOpacity(0.15)
+              : Colors.white.withOpacity(0.05),
+          border: Border.all(
+            color: isSelected ? neonGold : AppColors.glassBorder,
+            width: isSelected ? 2 : 1,
+          ),
+          boxShadow: isSelected
+              ? [
+                  BoxShadow(
+                    color: neonGold.withOpacity(0.5),
+                    blurRadius: 20,
+                    spreadRadius: 2,
+                  ),
+                  BoxShadow(
+                    color: genderColor.withOpacity(0.3),
+                    blurRadius: 30,
+                    spreadRadius: 5,
+                  ),
+                ]
+              : null,
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            // Symbol
+            Text(
+              gender.symbol,
+              style: TextStyle(
+                fontSize: 24,
+                color: isSelected ? neonGold : AppColors.textSecondary,
+                fontWeight: FontWeight.w300,
+              ),
+            ),
+            const SizedBox(height: 2),
+            // Label
+            Text(
+              gender.label,
+              style: AppTypography.labelSmall.copyWith(
+                fontSize: 9,
+                color: isSelected ? neonGold : AppColors.textTertiary,
+                fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 

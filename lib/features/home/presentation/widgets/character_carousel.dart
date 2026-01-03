@@ -1,4 +1,4 @@
-import 'dart:ui';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
@@ -9,8 +9,13 @@ import '../../data/character_data.dart';
 import '../../domain/models/character_model.dart';
 import '../providers/character_provider.dart';
 
+/// Gold color for premium accents
+const Color _goldColor = Color(0xFFFFD700);
+const Color _goldLight = Color(0xFFFFE55C);
+const Color _goldDark = Color(0xFFB8860B);
+
 /// An immersive 3D carousel for selecting tarot reader characters.
-/// Features parallax effects, glassmorphism cards, and smooth animations.
+/// Features portrait Tarot-style cards with golden borders and ethereal effects.
 class CharacterCarousel extends ConsumerStatefulWidget {
   const CharacterCarousel({super.key});
 
@@ -26,7 +31,7 @@ class _CharacterCarouselState extends ConsumerState<CharacterCarousel> {
   void initState() {
     super.initState();
     _pageController = PageController(
-      viewportFraction: 0.75,
+      viewportFraction: 0.65, // Adjusted for portrait cards with room for neighbors
       initialPage: ref.read(selectedCharacterIndexProvider),
     );
     _currentPage = ref.read(selectedCharacterIndexProvider).toDouble();
@@ -52,17 +57,15 @@ class _CharacterCarouselState extends ConsumerState<CharacterCarousel> {
     final characters = CharacterData.characters;
     final selectedIndex = ref.watch(selectedCharacterIndexProvider);
 
-    // Make carousel height responsive to screen size
-    final screenHeight = MediaQuery.of(context).size.height;
-    final carouselHeight = screenHeight < 700 ? 320.0 : (screenHeight < 800 ? 360.0 : 400.0);
-
-    return SizedBox(
-      height: carouselHeight,
+    // Allow overflow so shadows and glows don't get clipped
+    return ClipRect(
+      clipBehavior: Clip.none,
       child: PageView.builder(
         controller: _pageController,
+        clipBehavior: Clip.none, // Critical: prevents clipping of scaled/glowing cards
         itemCount: characters.length,
         onPageChanged: (index) {
-          ref.read(selectedCharacterIndexProvider.notifier).state = index;
+          ref.read(selectedCharacterIndexProvider.notifier).selectCharacter(index);
         },
         itemBuilder: (context, index) {
           return _buildCarouselCard(
@@ -82,24 +85,29 @@ class _CharacterCarouselState extends ConsumerState<CharacterCarousel> {
   }) {
     // Calculate parallax values based on scroll position
     final double difference = index - _currentPage;
-    final double scale = 1 - (difference.abs() * 0.15).clamp(0.0, 0.15);
-    final double opacity = 1 - (difference.abs() * 0.5).clamp(0.0, 0.5);
-    final double rotation = difference * 0.05;
-    final double translateY = difference.abs() * 30;
+    // More dramatic scaling for active card
+    final double scale = isActive
+        ? 1.0
+        : 1 - (difference.abs() * 0.1).clamp(0.0, 0.12);
+    final double opacity = 1 - (difference.abs() * 0.35).clamp(0.0, 0.45);
+    final double rotation = difference * 0.06;
+    final double translateY = difference.abs() * 20;
 
-    return Transform(
-      alignment: Alignment.center,
-      transform: Matrix4.identity()
-        ..setEntry(3, 2, 0.001) // Perspective
-        ..rotateY(rotation)
-        ..scale(scale)
-        ..translate(0.0, translateY),
-      child: Opacity(
-        opacity: opacity,
-        child: _CharacterCard(
-          character: character,
-          isActive: isActive,
-          onTap: () => _onCharacterTap(index, isActive),
+    return Center(
+      child: Transform(
+        alignment: Alignment.center,
+        transform: Matrix4.identity()
+          ..setEntry(3, 2, 0.001) // Perspective
+          ..rotateY(rotation)
+          ..scale(isActive ? 1.05 : scale) // Active card scales up
+          ..translate(0.0, isActive ? 0.0 : translateY),
+        child: Opacity(
+          opacity: opacity,
+          child: _TarotCharacterCard(
+            character: character,
+            isActive: isActive,
+            onTap: () => _onCharacterTap(index, isActive),
+          ),
         ),
       ),
     );
@@ -107,14 +115,12 @@ class _CharacterCarouselState extends ConsumerState<CharacterCarousel> {
 
   void _onCharacterTap(int index, bool isActive) {
     if (!isActive) {
-      // Animate to this character's page
       _pageController.animateToPage(
         index,
         duration: const Duration(milliseconds: 400),
         curve: Curves.easeOutCubic,
       );
     } else {
-      // Already selected - show character details or proceed to reading
       _showCharacterSelected(index);
     }
   }
@@ -136,7 +142,6 @@ class _CharacterCarouselState extends ConsumerState<CharacterCarousel> {
       return;
     }
 
-    // Show confirmation that character is selected
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text('${character.name} will guide your reading'),
@@ -151,13 +156,13 @@ class _CharacterCarouselState extends ConsumerState<CharacterCarousel> {
   }
 }
 
-/// Individual character card with glassmorphism design.
-class _CharacterCard extends StatelessWidget {
+/// Tarot-style portrait card with golden border and ethereal design.
+class _TarotCharacterCard extends StatelessWidget {
   final CharacterModel character;
   final bool isActive;
   final VoidCallback? onTap;
 
-  const _CharacterCard({
+  const _TarotCharacterCard({
     required this.character,
     required this.isActive,
     this.onTap,
@@ -169,253 +174,419 @@ class _CharacterCard extends StatelessWidget {
 
     Widget card = GestureDetector(
       onTap: onTap,
-      child: Container(
-      margin: const EdgeInsets.symmetric(
-        horizontal: AppConstants.spacingSmall,
-        vertical: AppConstants.spacingMedium,
-      ),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(AppConstants.glassBorderRadius),
-        // Glowing border for active card
-        boxShadow: isActive
-            ? [
-                BoxShadow(
-                  color: themeColor.withOpacity(0.6),
-                  blurRadius: 25,
-                  spreadRadius: 2,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          // Calculate card dimensions based on available space
+          // Use 3:4.5 aspect ratio (portrait tarot style)
+          final cardHeight = constraints.maxHeight * 0.92; // Leave room for glow
+          final cardWidth = cardHeight * 0.65; // 3:4.5 aspect ratio
+
+          return Center(
+            child: Container(
+              width: cardWidth,
+              height: cardHeight,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(16),
+                // Golden border with glow
+                border: Border.all(
+                  color: isActive ? _goldColor : _goldDark.withOpacity(0.5),
+                  width: isActive ? 2.5 : 1.5,
                 ),
-                BoxShadow(
-                  color: themeColor.withOpacity(0.3),
-                  blurRadius: 50,
-                  spreadRadius: 5,
-                ),
-              ]
-            : [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.3),
-                  blurRadius: 15,
-                  offset: const Offset(0, 10),
-                ),
-              ],
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(AppConstants.glassBorderRadius),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(
-            sigmaX: AppConstants.glassBlur,
-            sigmaY: AppConstants.glassBlur,
-          ),
-          child: Container(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(AppConstants.glassBorderRadius),
-              border: Border.all(
-                color: isActive
-                    ? themeColor.withOpacity(0.5)
-                    : AppColors.glassBorder,
-                width: isActive ? 2 : AppConstants.glassBorderWidth,
+                // Dramatic glow for active card
+                boxShadow: isActive
+                    ? [
+                        BoxShadow(
+                          color: _goldColor.withOpacity(0.4),
+                          blurRadius: 24,
+                          spreadRadius: 2,
+                        ),
+                        BoxShadow(
+                          color: themeColor.withOpacity(0.3),
+                          blurRadius: 32,
+                          spreadRadius: 4,
+                        ),
+                      ]
+                    : [
+                        BoxShadow(
+                          color: _goldDark.withOpacity(0.15),
+                          blurRadius: 12,
+                          spreadRadius: 1,
+                        ),
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.3),
+                          blurRadius: 16,
+                          offset: const Offset(0, 8),
+                        ),
+                      ],
               ),
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  themeColor.withOpacity(0.15),
-                  AppColors.glassFill,
-                  themeColor.withOpacity(0.1),
-                ],
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(14),
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    // Deep gradient background
+                    _buildBackground(themeColor),
+
+                    // Noise texture overlay
+                    _buildNoiseTexture(),
+
+                    // Main content
+                    _buildCardContent(context, themeColor),
+
+                    // Lock overlay
+                    if (character.isLocked) _buildLockOverlay(themeColor),
+
+                    // Golden corner accents
+                    _buildCornerAccents(),
+                  ],
+                ),
               ),
             ),
-            child: Stack(
-              children: [
-                // Background gradient effect
-                _buildBackgroundGradient(themeColor),
-
-                // Main content
-                _buildCardContent(context),
-
-                // Lock overlay
-                if (character.isLocked) _buildLockOverlay(context),
-              ],
-            ),
-          ),
-        ),
-      ),
+          );
+        },
       ),
     );
 
-    // Add pulse animation for active card
-    if (isActive) {
+    // Subtle pulse animation for active card
+    if (isActive && !character.isLocked) {
       card = card
           .animate(
             onPlay: (controller) => controller.repeat(reverse: true),
           )
-          .scale(
-            begin: const Offset(1.0, 1.0),
-            end: const Offset(1.02, 1.02),
-            duration: 2.seconds,
-            curve: Curves.easeInOut,
+          .shimmer(
+            duration: 3.seconds,
+            color: _goldColor.withOpacity(0.15),
           );
     }
 
     return card;
   }
 
-  Widget _buildBackgroundGradient(Color themeColor) {
-    return Positioned.fill(
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          gradient: RadialGradient(
-            center: Alignment.topCenter,
-            radius: 1.5,
-            colors: [
-              themeColor.withOpacity(0.3),
-              themeColor.withOpacity(0.1),
-              Colors.transparent,
-            ],
-            stops: const [0.0, 0.4, 1.0],
-          ),
+  Widget _buildBackground(Color themeColor) {
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            themeColor.withOpacity(0.4),
+            const Color(0xFF1A0A2E), // Deep violet
+            const Color(0xFF0D0514), // Near black
+            Colors.black,
+          ],
+          stops: const [0.0, 0.3, 0.7, 1.0],
         ),
       ),
     );
   }
 
-  Widget _buildCardContent(BuildContext context) {
-    final themeColor = character.themeColor;
-    // Use white/light text for better contrast against colored gradients
-    final nameColor = Colors.white;
-    final titleColor = Colors.white.withOpacity(0.85);
-    final descColor = Colors.white.withOpacity(0.7);
+  Widget _buildNoiseTexture() {
+    return Opacity(
+      opacity: 0.05,
+      child: CustomPaint(
+        painter: _NoisePainter(),
+        size: Size.infinite,
+      ),
+    );
+  }
 
+  Widget _buildCardContent(BuildContext context, Color themeColor) {
     return Padding(
-      padding: const EdgeInsets.all(AppConstants.spacingLarge),
+      padding: const EdgeInsets.all(12),
       child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const Spacer(),
-
-          // Character avatar placeholder with gradient
-          _buildCharacterAvatar(themeColor),
-
-          const SizedBox(height: AppConstants.spacingLarge),
-
-          // Character name (Cinzel font) - white with glow for contrast
-          Text(
-            character.name.toUpperCase(),
-            style: AppTypography.headlineMedium.copyWith(
-              color: nameColor,
-              letterSpacing: 2.5,
-              shadows: [
-                Shadow(
-                  color: themeColor,
-                  blurRadius: 15,
-                ),
-                Shadow(
-                  color: Colors.black.withOpacity(0.5),
-                  blurRadius: 5,
-                ),
-              ],
-            ),
-            textAlign: TextAlign.center,
+          // Large character image in top portion
+          Expanded(
+            flex: 6,
+            child: _buildLargeAvatar(themeColor),
           ),
 
-          const SizedBox(height: AppConstants.spacingSmall),
+          const SizedBox(height: 8),
 
-          // Character title
-          Text(
-            character.title,
-            style: AppTypography.mysticalQuote.copyWith(
-              color: titleColor,
-              fontSize: 14,
-              shadows: [
-                Shadow(
-                  color: Colors.black.withOpacity(0.5),
-                  blurRadius: 4,
-                ),
-              ],
-            ),
-            textAlign: TextAlign.center,
-          ),
+          // Divider with gold gradient
+          _buildGoldDivider(),
 
-          const SizedBox(height: AppConstants.spacingMedium),
+          const SizedBox(height: 8),
 
-          // Character description
-          Padding(
-            padding: const EdgeInsets.symmetric(
-              horizontal: AppConstants.spacingSmall,
-            ),
-            child: Text(
-              character.description,
-              style: AppTypography.bodySmall.copyWith(
-                color: descColor,
-                height: 1.6,
-                shadows: [
-                  Shadow(
-                    color: Colors.black.withOpacity(0.5),
-                    blurRadius: 3,
-                  ),
-                ],
-              ),
-              textAlign: TextAlign.center,
-              maxLines: 3,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-
-          const Spacer(),
-
-          // Status indicator
-          _buildStatusIndicator(themeColor),
+          // Name and title at bottom with gold gradient text
+          _buildNameSection(themeColor),
         ],
       ),
     );
   }
 
-  Widget _buildCharacterAvatar(Color themeColor) {
+  Widget _buildLargeAvatar(Color themeColor) {
     return Container(
-      width: 120,
-      height: 120,
       decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        gradient: RadialGradient(
-          colors: [
-            themeColor.withOpacity(0.5),
-            themeColor.withOpacity(0.3),
-            themeColor.withOpacity(0.1),
-          ],
-        ),
-        border: Border.all(
-          color: Colors.white.withOpacity(0.4),
-          width: 2,
-        ),
+        borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
             color: themeColor.withOpacity(0.5),
             blurRadius: 25,
-            spreadRadius: 5,
+            spreadRadius: 3,
+          ),
+          BoxShadow(
+            color: _goldColor.withOpacity(0.2),
+            blurRadius: 15,
+            spreadRadius: 1,
           ),
         ],
       ),
-      child: Center(
-        child: Icon(
-          _getCharacterIcon(),
-          size: 48,
-          color: Colors.white,
-          shadows: [
-            Shadow(
-              color: themeColor,
-              blurRadius: 10,
-            ),
-          ],
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: Image.asset(
+          character.imagePath,
+          fit: BoxFit.cover,
+          errorBuilder: (context, error, stackTrace) {
+            // Fallback to icon if image fails to load
+            return Container(
+              decoration: BoxDecoration(
+                gradient: RadialGradient(
+                  colors: [
+                    themeColor.withOpacity(0.3),
+                    themeColor.withOpacity(0.1),
+                  ],
+                ),
+              ),
+              child: Center(
+                child: Icon(
+                  _getCharacterIcon(),
+                  size: 48,
+                  color: Colors.white,
+                ),
+              ),
+            );
+          },
         ),
       ),
     )
         .animate()
-        .fadeIn(duration: 400.ms)
+        .fadeIn(duration: 500.ms)
         .scale(
-          begin: const Offset(0.8, 0.8),
+          begin: const Offset(0.95, 0.95),
           end: const Offset(1.0, 1.0),
-          duration: 400.ms,
+          duration: 500.ms,
           curve: Curves.easeOutBack,
         );
+  }
+
+  Widget _buildGoldDivider() {
+    return Container(
+      height: 1,
+      margin: const EdgeInsets.symmetric(horizontal: 20),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            Colors.transparent,
+            _goldColor.withOpacity(0.3),
+            _goldColor.withOpacity(0.6),
+            _goldColor.withOpacity(0.3),
+            Colors.transparent,
+          ],
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: _goldColor.withOpacity(0.3),
+            blurRadius: 4,
+            spreadRadius: 1,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildNameSection(Color themeColor) {
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        // Character name with gold gradient
+        ShaderMask(
+          shaderCallback: (bounds) => const LinearGradient(
+            colors: [_goldDark, _goldColor, _goldLight, _goldColor, _goldDark],
+            stops: [0.0, 0.25, 0.5, 0.75, 1.0],
+          ).createShader(bounds),
+          child: Text(
+            character.name.toUpperCase(),
+            style: AppTypography.titleLarge.copyWith(
+              color: Colors.white,
+              letterSpacing: 3.0,
+              fontSize: 15,
+              fontWeight: FontWeight.w600,
+            ),
+            textAlign: TextAlign.center,
+          ),
+        ),
+
+        const SizedBox(height: 6),
+
+        // Character title with subtle gold
+        ShaderMask(
+          shaderCallback: (bounds) => LinearGradient(
+            colors: [
+              _goldDark.withOpacity(0.8),
+              _goldColor.withOpacity(0.9),
+              _goldDark.withOpacity(0.8),
+            ],
+          ).createShader(bounds),
+          child: Text(
+            character.title,
+            style: AppTypography.mysticalQuote.copyWith(
+              color: Colors.white,
+              fontSize: 11,
+              fontStyle: FontStyle.italic,
+            ),
+            textAlign: TextAlign.center,
+          ),
+        ),
+
+        const SizedBox(height: 8),
+
+        // Description
+        Text(
+          character.description,
+          style: AppTypography.bodySmall.copyWith(
+            color: Colors.white.withOpacity(0.6),
+            fontSize: 9,
+            height: 1.4,
+          ),
+          textAlign: TextAlign.center,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCornerAccents() {
+    return Stack(
+      children: [
+        // Top left corner
+        Positioned(
+          top: 8,
+          left: 8,
+          child: _buildCornerSymbol(),
+        ),
+        // Top right corner (mirrored)
+        Positioned(
+          top: 8,
+          right: 8,
+          child: Transform.scale(
+            scaleX: -1,
+            child: _buildCornerSymbol(),
+          ),
+        ),
+        // Bottom left corner (rotated)
+        Positioned(
+          bottom: 8,
+          left: 8,
+          child: Transform.rotate(
+            angle: math.pi,
+            child: Transform.scale(
+              scaleX: -1,
+              child: _buildCornerSymbol(),
+            ),
+          ),
+        ),
+        // Bottom right corner (rotated)
+        Positioned(
+          bottom: 8,
+          right: 8,
+          child: Transform.rotate(
+            angle: math.pi,
+            child: _buildCornerSymbol(),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCornerSymbol() {
+    return Container(
+      width: 16,
+      height: 16,
+      decoration: BoxDecoration(
+        border: Border(
+          top: BorderSide(color: _goldColor.withOpacity(0.4), width: 1),
+          left: BorderSide(color: _goldColor.withOpacity(0.4), width: 1),
+        ),
+      ),
+      child: Align(
+        alignment: Alignment.topLeft,
+        child: Container(
+          width: 4,
+          height: 4,
+          margin: const EdgeInsets.all(2),
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: _goldColor.withOpacity(0.5),
+            boxShadow: [
+              BoxShadow(
+                color: _goldColor.withOpacity(0.3),
+                blurRadius: 4,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLockOverlay(Color themeColor) {
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            Colors.black.withOpacity(0.4),
+            Colors.black.withOpacity(0.6),
+            Colors.black.withOpacity(0.8),
+          ],
+        ),
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: Colors.black.withOpacity(0.4),
+              border: Border.all(
+                color: _goldColor.withOpacity(0.4),
+                width: 1.5,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: _goldColor.withOpacity(0.2),
+                  blurRadius: 20,
+                  spreadRadius: 2,
+                ),
+              ],
+            ),
+            child: Icon(
+              Icons.lock_outline,
+              size: 32,
+              color: _goldColor.withOpacity(0.8),
+            ),
+          ),
+          const SizedBox(height: 16),
+          ShaderMask(
+            shaderCallback: (bounds) => const LinearGradient(
+              colors: [_goldDark, _goldColor, _goldDark],
+            ).createShader(bounds),
+            child: Text(
+              'COMING SOON',
+              style: AppTypography.labelMedium.copyWith(
+                color: Colors.white,
+                letterSpacing: 2.5,
+                fontSize: 11,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   IconData _getCharacterIcon() {
@@ -432,186 +603,27 @@ class _CharacterCard extends StatelessWidget {
         return Icons.person;
     }
   }
+}
 
-  Widget _buildStatusIndicator(Color themeColor) {
-    if (character.isLocked) {
-      return Container(
-        padding: const EdgeInsets.symmetric(
-          horizontal: AppConstants.spacingMedium,
-          vertical: AppConstants.spacingSmall,
-        ),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(AppConstants.borderRadiusRound),
-          color: AppColors.backgroundTertiary.withOpacity(0.8),
-          border: Border.all(
-            color: AppColors.glassBorder,
-          ),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.lock_outline,
-              size: 14,
-              color: AppColors.textTertiary,
-            ),
-            const SizedBox(width: AppConstants.spacingXSmall),
-            Text(
-              'LOCKED',
-              style: AppTypography.labelSmall.copyWith(
-                color: AppColors.textTertiary,
-                letterSpacing: 1.5,
-              ),
-            ),
-          ],
-        ),
-      );
+/// Custom painter for subtle noise texture
+class _NoisePainter extends CustomPainter {
+  final math.Random _random = math.Random(42);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = Colors.white
+      ..strokeWidth = 1;
+
+    for (int i = 0; i < 500; i++) {
+      final x = _random.nextDouble() * size.width;
+      final y = _random.nextDouble() * size.height;
+      final opacity = _random.nextDouble() * 0.5;
+      paint.color = Colors.white.withOpacity(opacity);
+      canvas.drawCircle(Offset(x, y), 0.5, paint);
     }
-
-    return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: AppConstants.spacingMedium,
-        vertical: AppConstants.spacingSmall,
-      ),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(AppConstants.borderRadiusRound),
-        gradient: LinearGradient(
-          colors: [
-            themeColor.withOpacity(0.3),
-            themeColor.withOpacity(0.1),
-          ],
-        ),
-        border: Border.all(
-          color: themeColor.withOpacity(0.5),
-        ),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            Icons.auto_awesome,
-            size: 14,
-            color: themeColor,
-          ),
-          const SizedBox(width: AppConstants.spacingXSmall),
-          Text(
-            'AVAILABLE',
-            style: AppTypography.labelSmall.copyWith(
-              color: themeColor,
-              letterSpacing: 1.5,
-            ),
-          ),
-        ],
-      ),
-    );
   }
 
-  Widget _buildLockOverlay(BuildContext context) {
-    final themeColor = character.themeColor;
-
-    return Positioned.fill(
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(AppConstants.glassBorderRadius),
-        child: Container(
-          decoration: BoxDecoration(
-            // Subtle gradient overlay - less harsh than solid black
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [
-                Colors.black.withOpacity(0.3),
-                Colors.black.withOpacity(0.5),
-                Colors.black.withOpacity(0.7),
-              ],
-            ),
-          ),
-          child: Column(
-            children: [
-              // Coming Soon badge at top
-              Padding(
-                padding: const EdgeInsets.all(AppConstants.spacingMedium),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: AppConstants.spacingMedium,
-                    vertical: AppConstants.spacingSmall,
-                  ),
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(AppConstants.borderRadiusRound),
-                    gradient: LinearGradient(
-                      colors: [
-                        themeColor.withOpacity(0.4),
-                        themeColor.withOpacity(0.2),
-                      ],
-                    ),
-                    border: Border.all(
-                      color: themeColor.withOpacity(0.5),
-                    ),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        Icons.lock_outline,
-                        size: 14,
-                        color: Colors.white.withOpacity(0.9),
-                      ),
-                      const SizedBox(width: 6),
-                      Text(
-                        'COMING SOON',
-                        style: AppTypography.labelSmall.copyWith(
-                          color: Colors.white.withOpacity(0.9),
-                          letterSpacing: 1.5,
-                        ),
-                      ),
-                    ],
-                  ),
-                )
-                    .animate(
-                      onPlay: (controller) => controller.repeat(reverse: true),
-                    )
-                    .shimmer(
-                      duration: 2.seconds,
-                      color: themeColor.withOpacity(0.3),
-                    ),
-              ),
-
-              const Spacer(),
-
-              // Character name visible at bottom
-              Padding(
-                padding: const EdgeInsets.all(AppConstants.spacingLarge),
-                child: Column(
-                  children: [
-                    Text(
-                      character.name.toUpperCase(),
-                      style: AppTypography.headlineSmall.copyWith(
-                        color: Colors.white.withOpacity(0.9),
-                        letterSpacing: 2.0,
-                        shadows: [
-                          Shadow(
-                            color: themeColor,
-                            blurRadius: 10,
-                          ),
-                        ],
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      character.title,
-                      style: AppTypography.bodySmall.copyWith(
-                        color: Colors.white.withOpacity(0.7),
-                        fontStyle: FontStyle.italic,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

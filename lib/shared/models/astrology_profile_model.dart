@@ -98,7 +98,7 @@ class AstrologyProfileModel {
 
   /// Get the main three signs as formatted string
   String get mainSignsFormatted =>
-      'Güneş: ${sunSign.turkishName} | Ay: ${moonSign.turkishName} | Yükselen: ${ascendantSign.turkishName}';
+      'Sun: ${sunSign.englishName} | Moon: ${moonSign.englishName} | Rising: ${ascendantSign.englishName}';
 
   /// Get short cosmic signature
   String get cosmicSignature =>

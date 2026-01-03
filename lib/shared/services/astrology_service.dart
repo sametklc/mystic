@@ -3,21 +3,67 @@ import 'dart:math';
 import '../models/astrology_profile_model.dart';
 import '../models/birth_data_model.dart';
 
+/// Moon phase data model
+class MoonPhaseData {
+  final String name;
+  final String emoji;
+  final double illumination;
+
+  const MoonPhaseData({
+    required this.name,
+    required this.emoji,
+    required this.illumination,
+  });
+}
+
 /// Mock astrology calculation service.
 /// In production, this would connect to a real ephemeris API or library.
 class AstrologyService {
   static final Random _random = Random();
 
+  /// Calculate moon phase for a given date
+  static MoonPhaseData getMoonPhase(DateTime date) {
+    // Lunar cycle is approximately 29.53 days
+    // Reference new moon: January 6, 2000
+    final referenceNewMoon = DateTime(2000, 1, 6, 18, 14);
+    final daysSinceNewMoon = date.difference(referenceNewMoon).inDays.toDouble();
+    final lunarCycle = 29.53;
+
+    // Calculate position in lunar cycle (0 to 1)
+    final cyclePosition = (daysSinceNewMoon % lunarCycle) / lunarCycle;
+
+    // Determine phase based on position
+    if (cyclePosition < 0.0625) {
+      return const MoonPhaseData(name: 'New Moon', emoji: '🌑', illumination: 0.0);
+    } else if (cyclePosition < 0.1875) {
+      return const MoonPhaseData(name: 'Waxing Crescent', emoji: '🌒', illumination: 0.25);
+    } else if (cyclePosition < 0.3125) {
+      return const MoonPhaseData(name: 'First Quarter', emoji: '🌓', illumination: 0.5);
+    } else if (cyclePosition < 0.4375) {
+      return const MoonPhaseData(name: 'Waxing Gibbous', emoji: '🌔', illumination: 0.75);
+    } else if (cyclePosition < 0.5625) {
+      return const MoonPhaseData(name: 'Full Moon', emoji: '🌕', illumination: 1.0);
+    } else if (cyclePosition < 0.6875) {
+      return const MoonPhaseData(name: 'Waning Gibbous', emoji: '🌖', illumination: 0.75);
+    } else if (cyclePosition < 0.8125) {
+      return const MoonPhaseData(name: 'Last Quarter', emoji: '🌗', illumination: 0.5);
+    } else if (cyclePosition < 0.9375) {
+      return const MoonPhaseData(name: 'Waning Crescent', emoji: '🌘', illumination: 0.25);
+    } else {
+      return const MoonPhaseData(name: 'New Moon', emoji: '🌑', illumination: 0.0);
+    }
+  }
+
   /// List of mystical aura descriptions
   static const List<String> _auraDescriptions = [
-    'Güçlü bir auran var. Kozmik enerjiler seni seçti.',
-    'Yıldızlar senin için özel bir yol çizmiş.',
-    'Nadir görülen bir enerji taşıyorsun.',
-    'Kadim bilgelik ruhunda yankılanıyor.',
-    'Evrenin gizli mesajlarını algılayabilirsin.',
-    'Mistik bir güç seninle birlikte doğmuş.',
-    'Kozmik bir hediye taşıyorsun içinde.',
-    'Yıldızların rehberliğinde yürüyorsun.',
+    'You possess a powerful aura. The cosmic energies have chosen you.',
+    'The stars have drawn a special path just for you.',
+    'You carry a rare and unique energy within.',
+    'Ancient wisdom echoes through your soul.',
+    'You can perceive the hidden messages of the universe.',
+    'A mystical power was born alongside you.',
+    'You carry a cosmic gift deep within.',
+    'You walk under the guidance of the stars.',
   ];
 
   /// Calculate astrological profile from birth data (MOCK)
@@ -153,19 +199,19 @@ class AstrologyService {
       case ZodiacSign.aries:
       case ZodiacSign.leo:
       case ZodiacSign.sagittarius:
-        return 'Ateş';
+        return 'Fire';
       case ZodiacSign.taurus:
       case ZodiacSign.virgo:
       case ZodiacSign.capricorn:
-        return 'Toprak';
+        return 'Earth';
       case ZodiacSign.gemini:
       case ZodiacSign.libra:
       case ZodiacSign.aquarius:
-        return 'Hava';
+        return 'Air';
       case ZodiacSign.cancer:
       case ZodiacSign.scorpio:
       case ZodiacSign.pisces:
-        return 'Su';
+        return 'Water';
     }
   }
 
@@ -176,17 +222,17 @@ class AstrologyService {
       case ZodiacSign.cancer:
       case ZodiacSign.libra:
       case ZodiacSign.capricorn:
-        return 'Öncü';
+        return 'Cardinal';
       case ZodiacSign.taurus:
       case ZodiacSign.leo:
       case ZodiacSign.scorpio:
       case ZodiacSign.aquarius:
-        return 'Sabit';
+        return 'Fixed';
       case ZodiacSign.gemini:
       case ZodiacSign.virgo:
       case ZodiacSign.sagittarius:
       case ZodiacSign.pisces:
-        return 'Değişken';
+        return 'Mutable';
     }
   }
 }

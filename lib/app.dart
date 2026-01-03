@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'core/theme/app_theme.dart';
@@ -9,7 +10,10 @@ import 'features/home/presentation/pages/home_page.dart';
 import 'features/onboarding/onboarding.dart';
 import 'features/profile/presentation/pages/grimoire_screen.dart';
 import 'features/sky_hall/sky_hall.dart';
+import 'features/sky_hall/presentation/pages/love_match_screen.dart';
+import 'features/tarot/presentation/pages/tarot_selection_screen.dart';
 import 'shared/providers/providers.dart';
+import 'shared/widgets/mystic_background/mystic_background_scaffold.dart';
 
 /// The root widget of the Mystic application.
 class MysticApp extends ConsumerWidget {
@@ -49,6 +53,11 @@ class MysticApp extends ConsumerWidget {
 enum OnboardingStep {
   name,
   birthData,
+  relationship,
+  intention,
+  knowledge,
+  tone,
+  reveal,
   complete,
 }
 
@@ -67,6 +76,11 @@ final userDataLoaderProvider = FutureProvider<bool>((ref) async {
     // Set name
     if (user.name != null) {
       notifier.setName(user.name!);
+    }
+
+    // Set gender
+    if (user.gender != null) {
+      notifier.setGender(user.gender!);
     }
 
     // Set birth data
@@ -117,6 +131,41 @@ class _AppShellState extends ConsumerState<AppShell> {
   }
 
   void _onBirthDataComplete() {
+    setState(() {
+      _currentStep = OnboardingStep.relationship;
+    });
+  }
+
+  void _onRelationshipComplete(RelationshipStatus status) {
+    ref.read(userProvider.notifier).setRelationshipStatus(status.name);
+    setState(() {
+      _currentStep = OnboardingStep.intention;
+    });
+  }
+
+  void _onIntentionComplete(List<SpiritualIntention> intentions) {
+    final intentionNames = intentions.map((i) => i.name).toList();
+    ref.read(userProvider.notifier).setIntentions(intentionNames);
+    setState(() {
+      _currentStep = OnboardingStep.knowledge;
+    });
+  }
+
+  void _onKnowledgeComplete(KnowledgeLevel level) {
+    ref.read(userProvider.notifier).setKnowledgeLevel(level.name);
+    setState(() {
+      _currentStep = OnboardingStep.tone;
+    });
+  }
+
+  void _onToneComplete(PreferredTone tone) {
+    ref.read(userProvider.notifier).setPreferredTone(tone.name);
+    setState(() {
+      _currentStep = OnboardingStep.reveal;
+    });
+  }
+
+  void _onRevealComplete() {
     ref.read(userProvider.notifier).completeOnboarding();
     setState(() {
       _currentStep = OnboardingStep.complete;
@@ -143,7 +192,7 @@ class _AppShellState extends ConsumerState<AppShell> {
           return const MainAppScaffold();
         }
 
-        // Show current onboarding step
+        // Show current onboarding step (6 total steps: 0-5)
         switch (_currentStep) {
           case OnboardingStep.name:
             return OnboardingNameScreen(
@@ -151,7 +200,37 @@ class _AppShellState extends ConsumerState<AppShell> {
             );
           case OnboardingStep.birthData:
             return OnboardingBirthDataScreen(
+              currentStep: 1,
+              totalSteps: 6,
               onComplete: _onBirthDataComplete,
+            );
+          case OnboardingStep.relationship:
+            return OnboardingRelationshipScreen(
+              currentStep: 2,
+              totalSteps: 6,
+              onComplete: _onRelationshipComplete,
+            );
+          case OnboardingStep.intention:
+            return OnboardingIntentionScreen(
+              currentStep: 3,
+              totalSteps: 6,
+              onComplete: _onIntentionComplete,
+            );
+          case OnboardingStep.knowledge:
+            return OnboardingKnowledgeScreen(
+              currentStep: 4,
+              totalSteps: 6,
+              onComplete: _onKnowledgeComplete,
+            );
+          case OnboardingStep.tone:
+            return OnboardingToneScreen(
+              currentStep: 5,
+              totalSteps: 6,
+              onComplete: _onToneComplete,
+            );
+          case OnboardingStep.reveal:
+            return OnboardingRevealScreen(
+              onComplete: _onRevealComplete,
             );
           case OnboardingStep.complete:
             return const MainAppScaffold();
@@ -192,6 +271,7 @@ class _AppShellState extends ConsumerState<AppShell> {
 }
 
 /// Main app scaffold with bottom navigation.
+/// 5 tabs: Sanctuary (Home), Oracle, Sky Hall, Love Match, Grimoire
 class MainAppScaffold extends ConsumerStatefulWidget {
   const MainAppScaffold({super.key});
 
@@ -202,11 +282,25 @@ class MainAppScaffold extends ConsumerStatefulWidget {
 class _MainAppScaffoldState extends ConsumerState<MainAppScaffold> {
   int _currentIndex = 0;
 
+  // 5-tab structure
   final List<Widget> _pages = const [
     HomePage(),
-    SkyHallPage(),
+    // Oracle tab - TarotSelectionScreen in tab mode (no back button, skip charging)
+    TarotSelectionScreen(
+      isTabMode: true,
+      skipCharging: true,
+    ),
+    SkyHallPage(), // Now has 3 sub-tabs: Daily, Chart, Guide
+    LoveMatchWrapper(), // Standalone Love Match with its own scaffold
     GrimoireScreen(),
   ];
+
+  void _onTabSelected(int index) {
+    if (_currentIndex != index) {
+      HapticFeedback.selectionClick();
+      setState(() => _currentIndex = index);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -235,7 +329,7 @@ class _MainAppScaffoldState extends ConsumerState<MainAppScaffold> {
         child: SafeArea(
           child: Padding(
             padding: const EdgeInsets.symmetric(
-              horizontal: AppConstants.spacingMedium,
+              horizontal: 4,
               vertical: AppConstants.spacingSmall,
             ),
             child: Row(
@@ -243,21 +337,33 @@ class _MainAppScaffoldState extends ConsumerState<MainAppScaffold> {
               children: [
                 _buildNavItem(
                   index: 0,
-                  icon: Icons.home_rounded,
-                  label: 'Home',
+                  icon: Icons.home_filled,
+                  label: 'Sanctuary',
                   color: AppColors.primary,
                 ),
                 _buildNavItem(
                   index: 1,
+                  icon: Icons.visibility_rounded,
+                  label: 'Oracle',
+                  color: AppColors.secondary,
+                ),
+                _buildNavItem(
+                  index: 2,
                   icon: Icons.auto_awesome_rounded,
                   label: 'Sky Hall',
                   color: AppColors.mysticTeal,
                 ),
                 _buildNavItem(
-                  index: 2,
+                  index: 3,
+                  icon: Icons.favorite_rounded,
+                  label: 'Love',
+                  color: const Color(0xFFFF6B9D), // Rose pink for love
+                ),
+                _buildNavItem(
+                  index: 4,
                   icon: Icons.auto_stories_rounded,
                   label: 'Grimoire',
-                  color: AppColors.secondary,
+                  color: const Color(0xFFE0B0FF), // Light purple
                 ),
               ],
             ),
@@ -275,37 +381,98 @@ class _MainAppScaffoldState extends ConsumerState<MainAppScaffold> {
   }) {
     final isSelected = _currentIndex == index;
 
-    return GestureDetector(
-      onTap: () => setState(() => _currentIndex = index),
-      behavior: HitTestBehavior.opaque,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(
-          horizontal: 16,
-          vertical: 8,
-        ),
-        decoration: BoxDecoration(
-          color: isSelected ? color.withOpacity(0.15) : Colors.transparent,
-          borderRadius: BorderRadius.circular(AppConstants.borderRadiusRound),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              icon,
-              color: isSelected ? color : AppColors.textTertiary,
-              size: 24,
-            ),
-            if (isSelected) ...[
-              const SizedBox(width: 8),
+    return Expanded(
+      child: GestureDetector(
+        onTap: () => _onTabSelected(index),
+        behavior: HitTestBehavior.opaque,
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 6),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                icon,
+                color: isSelected ? color : AppColors.textTertiary,
+                size: 22,
+              ),
+              const SizedBox(height: 2),
               Text(
                 label,
-                style: AppTypography.labelMedium.copyWith(
-                  color: color,
-                  fontWeight: FontWeight.w600,
+                style: AppTypography.labelSmall.copyWith(
+                  color: isSelected ? color : AppColors.textTertiary,
+                  fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                  fontSize: 9,
                 ),
               ),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Wrapper for LoveMatchScreen to give it its own scaffold
+class LoveMatchWrapper extends ConsumerWidget {
+  const LoveMatchWrapper({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return MysticBackgroundScaffold(
+      child: SafeArea(
+        bottom: false,
+        child: Column(
+          children: [
+            // Header
+            Padding(
+              padding: const EdgeInsets.all(AppConstants.spacingMedium),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: LinearGradient(
+                        colors: [
+                          const Color(0xFFFF6B9D).withOpacity(0.3),
+                          AppColors.primary.withOpacity(0.2),
+                        ],
+                      ),
+                    ),
+                    child: const Icon(
+                      Icons.favorite,
+                      color: Color(0xFFFF6B9D),
+                      size: 24,
+                    ),
+                  ),
+                  const SizedBox(width: AppConstants.spacingMedium),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'LOVE MATCH',
+                          style: AppTypography.labelMedium.copyWith(
+                            color: const Color(0xFFFF6B9D),
+                            letterSpacing: 3,
+                          ),
+                        ),
+                        Text(
+                          'Cosmic Compatibility',
+                          style: AppTypography.bodySmall.copyWith(
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            // Love Match Content
+            const Expanded(
+              child: LoveMatchScreen(),
+            ),
           ],
         ),
       ),

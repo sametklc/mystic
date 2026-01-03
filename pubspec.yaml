@@ -50,6 +50,9 @@ dependencies:
   firebase_auth: ^5.3.4
   firebase_storage: ^12.3.7
 
+  # Image Picker
+  image_picker: ^1.0.7
+
   # Local Storage
   shared_preferences: ^2.3.3
   uuid: ^4.5.1
@@ -57,6 +60,10 @@ dependencies:
   # HTTP & Networking
   http: ^1.2.0
   dio: ^5.4.0
+
+  # Sharing & File System
+  share_plus: ^10.0.0
+  path_provider: ^2.1.0
 
   # Audio Playback
   just_audio: ^0.9.40
@@ -77,6 +84,7 @@ flutter:
 
   assets:
     - assets/images/
+    - assets/images/guides/
     - assets/icons/
     - assets/animations/
     - assets/fonts/

@@ -1,9 +1,13 @@
+import 'dart:io';
 import 'dart:math' as math;
-import 'dart:ui';
+import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../../../../core/constants/constants.dart';
 import '../../domain/models/synastry_model.dart';
@@ -28,6 +32,10 @@ class _CompatibilityResultViewState extends State<CompatibilityResultView> {
   bool _chemistryExpanded = false;
   bool _emotionalExpanded = false;
   bool _challengesExpanded = false;
+
+  // Share functionality
+  final GlobalKey _shareableKey = GlobalKey();
+  bool _isGeneratingShare = false;
 
   SynastryReport get report => widget.report;
 
@@ -122,9 +130,402 @@ class _CompatibilityResultViewState extends State<CompatibilityResultView> {
           _buildKeyAspects(),
 
           const SizedBox(height: AppConstants.spacingLarge),
+
+          // Share Button
+          _buildShareButton(),
+
+          const SizedBox(height: AppConstants.spacingLarge * 2),
         ],
       ),
     );
+  }
+
+  /// Share button
+  Widget _buildShareButton() {
+    return Builder(
+      builder: (context) {
+        return GestureDetector(
+          onTap: _isGeneratingShare ? null : () => _shareResult(context),
+          child: Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(vertical: 16),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  Colors.pink.shade400,
+                  Colors.purple.shade400,
+                ],
+              ),
+              borderRadius: BorderRadius.circular(AppConstants.borderRadiusLarge),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.pink.withOpacity(0.3),
+                  blurRadius: 12,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                if (_isGeneratingShare)
+                  SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      valueColor: AlwaysStoppedAnimation(Colors.white),
+                    ),
+                  )
+                else
+                  Icon(Icons.share_rounded, color: Colors.white, size: 22),
+                const SizedBox(width: 10),
+                Text(
+                  _isGeneratingShare ? 'Creating...' : 'Share',
+                  style: AppTypography.titleSmall.copyWith(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    ).animate().fadeIn(delay: 800.ms, duration: 400.ms);
+  }
+
+  /// Generate and share the result as Instagram story image
+  Future<void> _shareResult(BuildContext context) async {
+    setState(() => _isGeneratingShare = true);
+    HapticFeedback.mediumImpact();
+
+    try {
+      // Create the shareable image off-screen
+      final image = await _generateShareableImage();
+
+      if (image == null) {
+        throw Exception('Failed to generate image');
+      }
+
+      // Save to temporary file
+      final directory = await getTemporaryDirectory();
+      final fileName = 'love_match_${DateTime.now().millisecondsSinceEpoch}.png';
+      final file = File('${directory.path}/$fileName');
+      await file.writeAsBytes(image);
+
+      // Get the render box for share position (required for iPad)
+      final box = context.findRenderObject() as RenderBox?;
+      final sharePositionOrigin = box != null
+          ? box.localToGlobal(Offset.zero) & box.size
+          : const Rect.fromLTWH(0, 0, 100, 100);
+
+      // Share the image
+      await Share.shareXFiles(
+        [XFile(file.path)],
+        text: '✨ Our cosmic compatibility: ${report.compatibilityScore}% ${report.compatibilityLevel} ✨',
+        sharePositionOrigin: sharePositionOrigin,
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to share: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isGeneratingShare = false);
+      }
+    }
+  }
+
+  /// Generate shareable PNG image (Instagram Story format: 1080x1920)
+  Future<Uint8List?> _generateShareableImage() async {
+    // Instagram Story dimensions
+    const double storyWidth = 1080;
+    const double storyHeight = 1920;
+
+    // Create a picture recorder
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder);
+
+    // Draw background gradient
+    final bgPaint = Paint()
+      ..shader = ui.Gradient.linear(
+        Offset.zero,
+        const Offset(0, storyHeight),
+        [
+          const Color(0xFF0D0D1A),
+          const Color(0xFF1A0A2E),
+          const Color(0xFF0D0D1A),
+        ],
+        [0.0, 0.5, 1.0],
+      );
+    canvas.drawRect(
+      const Rect.fromLTWH(0, 0, storyWidth, storyHeight),
+      bgPaint,
+    );
+
+    // Draw decorative stars
+    _drawStars(canvas, storyWidth, storyHeight);
+
+    // Draw content
+    final compatColor = Color(report.compatibilityColorValue);
+
+    // Title
+    _drawText(
+      canvas,
+      '✨ COSMIC LOVE MATCH ✨',
+      const Offset(storyWidth / 2, 180),
+      fontSize: 48,
+      color: Colors.white.withOpacity(0.9),
+      isCentered: true,
+      fontWeight: FontWeight.bold,
+    );
+
+    // Names
+    final namesText = '${report.user1Name ?? "You"} & ${report.user2Name ?? "Partner"}';
+    _drawText(
+      canvas,
+      namesText,
+      const Offset(storyWidth / 2, 280),
+      fontSize: 36,
+      color: Colors.pink.shade200,
+      isCentered: true,
+    );
+
+    // Main score circle
+    _drawScoreCircle(canvas, storyWidth / 2, 580, 180, compatColor);
+
+    // Score text
+    _drawText(
+      canvas,
+      '${report.compatibilityScore}%',
+      const Offset(storyWidth / 2, 580),
+      fontSize: 72,
+      color: compatColor,
+      isCentered: true,
+      fontWeight: FontWeight.bold,
+    );
+
+    // Compatibility level
+    _drawText(
+      canvas,
+      report.compatibilityLevel.toUpperCase(),
+      const Offset(storyWidth / 2, 820),
+      fontSize: 40,
+      color: compatColor,
+      isCentered: true,
+      fontWeight: FontWeight.w600,
+    );
+
+    // Category scores
+    const scoreStartY = 980.0;
+    const scoreSpacing = 100.0;
+
+    _drawScoreBar(canvas, '❤️  Emotional', report.emotionalCompatibility, Colors.pink, scoreStartY);
+    _drawScoreBar(canvas, '🧠  Intellectual', report.intellectualCompatibility, Colors.blue, scoreStartY + scoreSpacing);
+    _drawScoreBar(canvas, '🔥  Physical', report.physicalCompatibility, Colors.orange, scoreStartY + scoreSpacing * 2);
+    _drawScoreBar(canvas, '✨  Spiritual', report.spiritualCompatibility, const Color(0xFF00D9FF), scoreStartY + scoreSpacing * 3);
+
+    // Aspect counts
+    _drawAspectCounts(canvas, storyWidth, 1480);
+
+    // Summary (if available)
+    if (report.detailedAnalysis?.summary.isNotEmpty == true) {
+      final summary = report.detailedAnalysis!.summary;
+      final truncatedSummary = summary.length > 120 ? '${summary.substring(0, 117)}...' : summary;
+      _drawText(
+        canvas,
+        '"$truncatedSummary"',
+        const Offset(storyWidth / 2, 1650),
+        fontSize: 28,
+        color: Colors.white.withOpacity(0.7),
+        isCentered: true,
+        maxWidth: storyWidth - 120,
+      );
+    }
+
+    // App branding
+    _drawText(
+      canvas,
+      'mystic.app',
+      const Offset(storyWidth / 2, 1850),
+      fontSize: 24,
+      color: Colors.white.withOpacity(0.4),
+      isCentered: true,
+    );
+
+    // Convert to image
+    final picture = recorder.endRecording();
+    final img = await picture.toImage(storyWidth.toInt(), storyHeight.toInt());
+    final byteData = await img.toByteData(format: ui.ImageByteFormat.png);
+
+    return byteData?.buffer.asUint8List();
+  }
+
+  void _drawStars(Canvas canvas, double width, double height) {
+    final random = math.Random(42); // Fixed seed for consistent stars
+    final starPaint = Paint()..color = Colors.white.withOpacity(0.3);
+
+    for (int i = 0; i < 100; i++) {
+      final x = random.nextDouble() * width;
+      final y = random.nextDouble() * height;
+      final radius = random.nextDouble() * 2 + 0.5;
+      canvas.drawCircle(Offset(x, y), radius, starPaint);
+    }
+  }
+
+  void _drawScoreCircle(Canvas canvas, double cx, double cy, double radius, Color color) {
+    // Background circle
+    final bgPaint = Paint()
+      ..color = Colors.white.withOpacity(0.1)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 16;
+    canvas.drawCircle(Offset(cx, cy), radius, bgPaint);
+
+    // Progress arc
+    final progressPaint = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 16
+      ..strokeCap = StrokeCap.round;
+
+    canvas.drawArc(
+      Rect.fromCircle(center: Offset(cx, cy), radius: radius),
+      -math.pi / 2,
+      2 * math.pi * (report.compatibilityScore / 100),
+      false,
+      progressPaint,
+    );
+
+    // Glow
+    final glowPaint = Paint()
+      ..color = color.withOpacity(0.3)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 24
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8);
+    canvas.drawArc(
+      Rect.fromCircle(center: Offset(cx, cy), radius: radius),
+      -math.pi / 2,
+      2 * math.pi * (report.compatibilityScore / 100),
+      false,
+      glowPaint,
+    );
+  }
+
+  void _drawScoreBar(Canvas canvas, String label, int score, Color color, double y) {
+    const double barX = 100;
+    const double barWidth = 880;
+    const double barHeight = 24;
+
+    // Label
+    _drawText(canvas, label, Offset(barX, y - 30), fontSize: 28, color: Colors.white.withOpacity(0.8));
+
+    // Score
+    _drawText(canvas, '$score%', Offset(barX + barWidth - 60, y - 30), fontSize: 28, color: color, fontWeight: FontWeight.bold);
+
+    // Background bar
+    final bgRect = RRect.fromRectAndRadius(
+      Rect.fromLTWH(barX, y, barWidth, barHeight),
+      const Radius.circular(12),
+    );
+    canvas.drawRRect(bgRect, Paint()..color = color.withOpacity(0.2));
+
+    // Progress bar
+    final progressRect = RRect.fromRectAndRadius(
+      Rect.fromLTWH(barX, y, barWidth * (score / 100), barHeight),
+      const Radius.circular(12),
+    );
+    canvas.drawRRect(progressRect, Paint()..color = color);
+  }
+
+  void _drawAspectCounts(Canvas canvas, double width, double y) {
+    // Harmonious
+    _drawAspectBadge(
+      canvas,
+      width / 2 - 180,
+      y,
+      '${report.harmoniousAspectsCount}',
+      'Harmonious',
+      Colors.green,
+      '👍',
+    );
+
+    // Challenging
+    _drawAspectBadge(
+      canvas,
+      width / 2 + 180,
+      y,
+      '${report.challengingAspectsCount}',
+      'Challenging',
+      Colors.orange,
+      '⚡',
+    );
+  }
+
+  void _drawAspectBadge(Canvas canvas, double cx, double cy, String count, String label, Color color, String emoji) {
+    // Background
+    final bgRect = RRect.fromRectAndRadius(
+      Rect.fromCenter(center: Offset(cx, cy), width: 200, height: 120),
+      const Radius.circular(20),
+    );
+    canvas.drawRRect(bgRect, Paint()..color = color.withOpacity(0.15));
+    canvas.drawRRect(
+      bgRect,
+      Paint()
+        ..color = color.withOpacity(0.4)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2,
+    );
+
+    // Emoji
+    _drawText(canvas, emoji, Offset(cx, cy - 25), fontSize: 32, isCentered: true);
+
+    // Count
+    _drawText(canvas, count, Offset(cx, cy + 10), fontSize: 36, color: color, isCentered: true, fontWeight: FontWeight.bold);
+
+    // Label
+    _drawText(canvas, label, Offset(cx, cy + 45), fontSize: 20, color: Colors.white.withOpacity(0.6), isCentered: true);
+  }
+
+  void _drawText(
+    Canvas canvas,
+    String text,
+    Offset offset, {
+    double fontSize = 24,
+    Color color = Colors.white,
+    bool isCentered = false,
+    FontWeight fontWeight = FontWeight.normal,
+    double? maxWidth,
+  }) {
+    final textStyle = ui.TextStyle(
+      color: color,
+      fontSize: fontSize,
+      fontWeight: fontWeight,
+    );
+
+    final paragraphStyle = ui.ParagraphStyle(
+      textAlign: isCentered ? TextAlign.center : TextAlign.left,
+      maxLines: maxWidth != null ? 3 : 1,
+      ellipsis: '...',
+    );
+
+    final paragraphBuilder = ui.ParagraphBuilder(paragraphStyle)
+      ..pushStyle(textStyle)
+      ..addText(text);
+
+    final paragraph = paragraphBuilder.build();
+    paragraph.layout(ui.ParagraphConstraints(width: maxWidth ?? 1000));
+
+    final textOffset = isCentered
+        ? Offset(offset.dx - paragraph.width / 2, offset.dy - paragraph.height / 2)
+        : offset;
+
+    canvas.drawParagraph(paragraph, textOffset);
   }
 
   /// Build the three expandable analysis sections
@@ -398,7 +799,7 @@ class _CompatibilityResultViewState extends State<CompatibilityResultView> {
     return ClipRRect(
       borderRadius: BorderRadius.circular(AppConstants.borderRadiusLarge),
       child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+        filter: ui.ImageFilter.blur(sigmaX: 10, sigmaY: 10),
         child: Container(
           padding: const EdgeInsets.all(AppConstants.spacingMedium),
           decoration: BoxDecoration(

@@ -117,6 +117,7 @@ class SynastryNotifier extends StateNotifier<SynastryState> {
   Future<void> calculateSynastry({
     required Map<String, dynamic> user1Data,
     required Map<String, dynamic> user2Data,
+    String? characterId,
   }) async {
     state = SynastryState.loading();
 
@@ -124,6 +125,7 @@ class SynastryNotifier extends StateNotifier<SynastryState> {
       final report = await _apiService.calculateSynastry(
         user1Data: user1Data,
         user2Data: user2Data,
+        characterId: characterId,
       );
       state = SynastryState.success(report);
     } on AstrologyApiException catch (e) {

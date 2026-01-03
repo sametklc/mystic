@@ -1,21 +1,24 @@
-import 'dart:ui';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:shimmer/shimmer.dart';
 
 import '../../../../core/constants/constants.dart';
 import '../../../../shared/providers/providers.dart';
 import '../../../../shared/widgets/widgets.dart';
+import '../../../profile/presentation/pages/profile_screen.dart';
 import '../../../sky_hall/data/providers/sky_hall_provider.dart';
-import '../../../sky_hall/domain/models/daily_insight_model.dart';
-import '../../../tarot/presentation/pages/tarot_selection_screen.dart';
-import '../providers/character_provider.dart';
 import '../widgets/character_carousel.dart';
+import '../widgets/cosmic_insight_card.dart';
+import '../widgets/daily_tarot_card.dart';
+
+/// Gold color for premium section headers
+const Color _goldColor = Color(0xFFFFD700);
+const Color _goldDark = Color(0xFFB8860B);
 
 /// Home page with character selection carousel and daily rituals.
+/// Features a cinematic, ethereal design language.
+/// Compact layout - everything fits on a single screen without scrolling.
 class HomePage extends ConsumerStatefulWidget {
   const HomePage({super.key});
 
@@ -35,51 +38,55 @@ class _HomePageState extends ConsumerState<HomePage> {
 
   @override
   Widget build(BuildContext context) {
+    final bottomPadding = MediaQuery.of(context).padding.bottom;
+
     return MysticBackgroundScaffold(
       child: SafeArea(
-        bottom: false, // Don't add bottom padding, bottom nav handles it
+        bottom: false,
         child: LayoutBuilder(
           builder: (context, constraints) {
-            // Use smaller spacing on shorter screens
-            final isCompact = constraints.maxHeight < 700;
+            final availableHeight = constraints.maxHeight;
+            // Carousel takes 50% of available height - the Hero element
+            final carouselHeight = availableHeight * 0.50;
+            // Minimum height for daily rituals cards (compact/panoramic)
+            const minRitualsHeight = 120.0;
 
-            return SingleChildScrollView(
-              physics: const BouncingScrollPhysics(),
-              child: ConstrainedBox(
-                constraints: BoxConstraints(
-                  minHeight: constraints.maxHeight,
+            return Column(
+              children: [
+                // ===== HEADER (Fixed, Compact) =====
+                _buildHeader(context),
+
+                const SizedBox(height: 4),
+
+                // ===== SECTION: CHOOSE YOUR GUIDE =====
+                _buildSectionHeader('CHOOSE YOUR GUIDE'),
+
+                const SizedBox(height: 8),
+
+                // ===== CHARACTER CAROUSEL (Dynamic Height: 42%) =====
+                SizedBox(
+                  height: carouselHeight,
+                  child: const CharacterCarousel(),
                 ),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    // Header Section
-                    _buildHeader(context),
 
-                    SizedBox(height: isCompact ? 8 : 16),
+                const SizedBox(height: 8),
 
-                    // App Title
-                    _buildAppTitle(),
+                // ===== SECTION: DAILY RITUALS =====
+                _buildSectionHeader('DAILY RITUALS'),
 
-                    SizedBox(height: isCompact ? 4 : AppConstants.spacingSmall),
+                const SizedBox(height: 8),
 
-                    // Tagline based on selected character
-                    _buildCharacterTagline(),
-
-                    SizedBox(height: isCompact ? 8 : 16),
-
-                    // Character Carousel (~55-60% of screen)
-                    const CharacterCarousel(),
-
-                    SizedBox(height: isCompact ? 8 : 16),
-
-                    // Daily Rituals Section
-                    _buildDailyRitualsSection(context, isCompact),
-
-                    // Bottom padding for bottom navigation bar
-                    SizedBox(height: isCompact ? 70 : 80),
-                  ],
+                // ===== DAILY RITUALS CARDS (Expanded - fills remaining) =====
+                Expanded(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(minHeight: minRitualsHeight),
+                    child: _buildDailyRitualsSection(context),
+                  ),
                 ),
-              ),
+
+                // ===== BOTTOM PADDING for Navigation Bar =====
+                SizedBox(height: 80 + bottomPadding),
+              ],
             );
           },
         ),
@@ -87,13 +94,76 @@ class _HomePageState extends ConsumerState<HomePage> {
     );
   }
 
+  /// Premium section header with gold text
+  Widget _buildSectionHeader(String title) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 24),
+      child: Row(
+        children: [
+          // Left decorative line
+          Expanded(
+            child: Container(
+              height: 1,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    Colors.transparent,
+                    _goldDark.withOpacity(0.3),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 16),
+          // Title text with gold gradient
+          ShaderMask(
+            shaderCallback: (bounds) => LinearGradient(
+              colors: [
+                _goldDark,
+                _goldColor,
+                _goldDark,
+              ],
+            ).createShader(bounds),
+            child: Text(
+              title,
+              style: AppTypography.labelMedium.copyWith(
+                color: Colors.white,
+                letterSpacing: 3.5,
+                fontSize: 10,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+          const SizedBox(width: 16),
+          // Right decorative line
+          Expanded(
+            child: Container(
+              height: 1,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    _goldDark.withOpacity(0.3),
+                    Colors.transparent,
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    )
+        .animate()
+        .fadeIn(delay: 200.ms, duration: 500.ms);
+  }
+
   Widget _buildHeader(BuildContext context) {
     final userName = ref.watch(userNameProvider);
+    final insightState = ref.watch(dailyInsightProvider);
 
     return Padding(
       padding: const EdgeInsets.symmetric(
         horizontal: AppConstants.spacingMedium,
-        vertical: AppConstants.spacingSmall,
+        vertical: 8,
       ),
       child: Row(
         children: [
@@ -103,7 +173,7 @@ class _HomePageState extends ConsumerState<HomePage> {
           ),
 
           // Moon Phase (Center-Right)
-          _buildMoonPhase(),
+          _buildMoonPhase(insightState),
 
           const SizedBox(width: AppConstants.spacingSmall),
 
@@ -113,41 +183,117 @@ class _HomePageState extends ConsumerState<HomePage> {
       ),
     )
         .animate()
-        .fadeIn(duration: 600.ms)
-        .slideY(begin: -0.3, end: 0, duration: 600.ms);
+        .fadeIn(duration: 500.ms)
+        .slideY(begin: -0.2, end: 0, duration: 500.ms);
   }
 
   Widget _buildWelcomeSection(String? userName) {
     final displayName = userName ?? 'Seeker';
+    final user = ref.watch(userProvider);
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Welcome,',
-          style: AppTypography.bodySmall.copyWith(
-            color: AppColors.textTertiary,
+    return GestureDetector(
+      onTap: () {
+        HapticFeedback.lightImpact();
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => const ProfileScreen(),
           ),
-        ),
-        Text(
-          displayName,
-          style: AppTypography.headlineSmall.copyWith(
-            color: AppColors.textPrimary,
+        );
+      },
+      child: Row(
+        children: [
+          // Profile Avatar
+          _buildProfileAvatar(user),
+          const SizedBox(width: 12),
+          // Welcome Text
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                'Welcome,',
+                style: AppTypography.bodySmall.copyWith(
+                  color: AppColors.textTertiary,
+                  fontSize: 11,
+                ),
+              ),
+              Text(
+                displayName,
+                style: AppTypography.titleMedium.copyWith(
+                  color: AppColors.textPrimary,
+                ),
+              ),
+            ],
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
-  Widget _buildMoonPhase() {
-    final insightState = ref.watch(dailyInsightProvider);
+  Widget _buildProfileAvatar(user) {
+    return Container(
+      width: 44,
+      height: 44,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            AppColors.primary.withOpacity(0.3),
+            AppColors.mysticTeal.withOpacity(0.3),
+          ],
+        ),
+        border: Border.all(
+          color: AppColors.primary.withOpacity(0.5),
+          width: 2,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.primary.withOpacity(0.2),
+            blurRadius: 8,
+            spreadRadius: 1,
+          ),
+        ],
+      ),
+      child: ClipOval(
+        child: user.hasProfileImage
+            ? Image.network(
+                user.profileImageUrl!,
+                fit: BoxFit.cover,
+                errorBuilder: (context, error, stackTrace) =>
+                    _buildAvatarFallback(user),
+                loadingBuilder: (context, child, loadingProgress) {
+                  if (loadingProgress == null) return child;
+                  return _buildAvatarFallback(user);
+                },
+              )
+            : _buildAvatarFallback(user),
+      ),
+    );
+  }
 
-    // Get moon phase data from provider
+  Widget _buildAvatarFallback(user) {
+    return Container(
+      color: AppColors.surface,
+      child: Center(
+        child: Text(
+          user.initials,
+          style: AppTypography.titleSmall.copyWith(
+            color: AppColors.primary,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMoonPhase(DailyInsightState insightState) {
     final moonPhase = insightState.hasInsight
         ? insightState.insight!.moonPhase
         : 'Loading...';
     final moonIcon = insightState.hasInsight
-        ? _getMoonPhaseIcon(insightState.insight!.moonPhaseIcon)
+        ? insightState.insight!.moonPhaseIconData
         : Icons.nightlight_round;
 
     return Container(
@@ -165,7 +311,7 @@ class _HomePageState extends ConsumerState<HomePage> {
         children: [
           Icon(
             moonIcon,
-            size: 16,
+            size: 14,
             color: AppColors.primary,
           ),
           const SizedBox(width: AppConstants.spacingXSmall),
@@ -173,35 +319,12 @@ class _HomePageState extends ConsumerState<HomePage> {
             moonPhase,
             style: AppTypography.labelSmall.copyWith(
               color: AppColors.textSecondary,
+              fontSize: 10,
             ),
           ),
         ],
       ),
     );
-  }
-
-  /// Get the appropriate icon for the moon phase
-  IconData _getMoonPhaseIcon(String moonPhaseIcon) {
-    switch (moonPhaseIcon) {
-      case 'new_moon':
-        return Icons.brightness_1_outlined; // Empty circle
-      case 'waxing_crescent':
-        return Icons.nightlight_round; // Crescent facing right
-      case 'first_quarter':
-        return Icons.contrast; // Half moon
-      case 'waxing_gibbous':
-        return Icons.brightness_2; // Almost full
-      case 'full_moon':
-        return Icons.brightness_1; // Full circle
-      case 'waning_gibbous':
-        return Icons.brightness_3; // Almost full (other side)
-      case 'last_quarter':
-        return Icons.contrast; // Half moon
-      case 'waning_crescent':
-        return Icons.nightlight_outlined; // Crescent facing left
-      default:
-        return Icons.nightlight_round;
-    }
   }
 
   Widget _buildCoinBalance() {
@@ -226,8 +349,8 @@ class _HomePageState extends ConsumerState<HomePage> {
         mainAxisSize: MainAxisSize.min,
         children: [
           const Text(
-            '\u{1F48E}', // Diamond emoji
-            style: TextStyle(fontSize: 14),
+            '\u{1F48E}',
+            style: TextStyle(fontSize: 12),
           ),
           const SizedBox(width: AppConstants.spacingXSmall),
           Text(
@@ -235,6 +358,7 @@ class _HomePageState extends ConsumerState<HomePage> {
             style: AppTypography.labelMedium.copyWith(
               color: AppColors.primary,
               fontWeight: FontWeight.bold,
+              fontSize: 12,
             ),
           ),
         ],
@@ -242,661 +366,56 @@ class _HomePageState extends ConsumerState<HomePage> {
     );
   }
 
-  Widget _buildAppTitle() {
-    return ShaderMask(
-      shaderCallback: (bounds) => const LinearGradient(
-        colors: [
-          AppColors.primary,
-          AppColors.primaryLight,
-          AppColors.primary,
-        ],
-      ).createShader(bounds),
-      child: Text(
-        AppConstants.appName,
-        style: AppTypography.displayMedium.copyWith(
-          color: Colors.white,
-          shadows: [
-            Shadow(
-              color: AppColors.primaryGlow,
-              blurRadius: 20,
-            ),
-          ],
-        ),
-      ),
-    )
-        .animate()
-        .fadeIn(delay: 200.ms, duration: 600.ms)
-        .scale(
-          begin: const Offset(0.9, 0.9),
-          end: const Offset(1.0, 1.0),
-          delay: 200.ms,
-          duration: 600.ms,
-          curve: Curves.easeOutBack,
-        );
-  }
-
-  Widget _buildCharacterTagline() {
-    final character = ref.watch(selectedCharacterProvider);
-
-    return Text(
-      'Choose your guide',
-      style: AppTypography.mysticalQuote.copyWith(
-        color: character.themeColor.withOpacity(0.8),
-      ),
-    )
-        .animate()
-        .fadeIn(delay: 400.ms, duration: 600.ms);
-  }
-
-  Widget _buildDailyRitualsSection(BuildContext context, bool isCompact) {
+  Widget _buildDailyRitualsSection(BuildContext context) {
     final insightState = ref.watch(dailyInsightProvider);
+    final screenWidth = MediaQuery.of(context).size.width;
 
     return Padding(
       padding: EdgeInsets.symmetric(
-        horizontal: isCompact ? AppConstants.spacingSmall : AppConstants.spacingMedium,
+        horizontal: screenWidth > 400 ? 20 : 16,
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Section Header
-          Padding(
-            padding: EdgeInsets.only(
-              left: AppConstants.spacingSmall,
-              bottom: isCompact ? 4 : AppConstants.spacingSmall,
-            ),
-            child: Text(
-              'DAILY RITUALS',
-              style: AppTypography.labelMedium.copyWith(
-                color: AppColors.textTertiary,
-                letterSpacing: 2.0,
-              ),
-            ),
+          // Daily Tarot Card
+          Expanded(
+            child: const DailyTarotCard()
+                .animate()
+                .fadeIn(delay: 400.ms, duration: 500.ms)
+                .slideX(begin: -0.1, end: 0, delay: 400.ms, duration: 500.ms),
           ),
-
-          // Action Cards Row
-          Row(
-            children: [
-              Expanded(
-                child: _buildActionCard(
-                  icon: Icons.style_rounded,
-                  title: 'Daily Tarot',
-                  subtitle: 'Your card of the day',
-                  color: AppColors.secondary,
-                  isCompact: isCompact,
-                  onTap: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (context) => const TarotSelectionScreen(),
-                      ),
-                    );
-                  },
-                ),
-              ),
-              SizedBox(width: isCompact ? AppConstants.spacingSmall : AppConstants.spacingMedium),
-              Expanded(
-                child: _buildCosmicInsightCard(context, insightState, isCompact),
-              ),
-            ],
+          const SizedBox(width: 16),
+          // Cosmic Insight Card
+          Expanded(
+            child: CosmicInsightCard(
+              insight: insightState.insight,
+              isLoading: insightState.isLoading,
+              hasError: insightState.hasError,
+              onTap: () {
+                if (insightState.hasInsight) {
+                  _showCosmicInsightSheet(context, insightState.insight!);
+                }
+              },
+              onRetry: () {
+                ref.read(dailyInsightProvider.notifier).fetchDailyInsight(forceRefresh: true);
+              },
+            )
+                .animate()
+                .fadeIn(delay: 500.ms, duration: 500.ms)
+                .slideX(begin: 0.1, end: 0, delay: 500.ms, duration: 500.ms),
           ),
         ],
       ),
-    )
-        .animate()
-        .fadeIn(delay: 800.ms, duration: 600.ms)
-        .slideY(begin: 0.2, end: 0, delay: 800.ms, duration: 600.ms);
-  }
-
-  Widget _buildCosmicInsightCard(BuildContext context, DailyInsightState state, bool isCompact) {
-    if (state.isLoading) {
-      return _buildCosmicInsightLoading(isCompact);
-    }
-
-    if (state.hasInsight) {
-      return _buildCosmicInsightSuccess(context, state.insight!, isCompact);
-    }
-
-    // Error or initial state - show placeholder
-    return _buildActionCard(
-      icon: Icons.public_rounded,
-      title: 'Cosmic Insight',
-      subtitle: state.hasError ? 'Tap to retry' : 'Loading...',
-      color: AppColors.mysticTeal,
-      isCompact: isCompact,
-      onTap: () {
-        ref.read(dailyInsightProvider.notifier).fetchDailyInsight(forceRefresh: true);
-      },
     );
   }
 
-  Widget _buildCosmicInsightLoading(bool isCompact) {
-    final padding = isCompact ? AppConstants.spacingSmall : AppConstants.spacingMedium;
-    final iconSize = isCompact ? 32.0 : 40.0;
-
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(AppConstants.borderRadiusLarge),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-        child: Shimmer.fromColors(
-          baseColor: AppColors.mysticTeal.withOpacity(0.1),
-          highlightColor: AppColors.mysticTeal.withOpacity(0.3),
-          child: Container(
-            padding: EdgeInsets.all(padding),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(AppConstants.borderRadiusLarge),
-              color: AppColors.glassFill,
-              border: Border.all(
-                color: AppColors.mysticTeal.withOpacity(0.3),
-                width: 1,
-              ),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // Icon placeholder
-                Container(
-                  width: iconSize,
-                  height: iconSize,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: AppColors.mysticTeal.withOpacity(0.2),
-                  ),
-                ),
-                SizedBox(height: isCompact ? 4 : AppConstants.spacingSmall),
-                // Title placeholder
-                Container(
-                  width: 80,
-                  height: 16,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(4),
-                    color: AppColors.mysticTeal.withOpacity(0.2),
-                  ),
-                ),
-                SizedBox(height: isCompact ? 2 : AppConstants.spacingXSmall),
-                // Subtitle placeholder
-                Container(
-                  width: 100,
-                  height: 12,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(4),
-                    color: AppColors.mysticTeal.withOpacity(0.1),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildCosmicInsightSuccess(BuildContext context, DailyInsight insight, bool isCompact) {
-    final padding = isCompact ? AppConstants.spacingSmall : AppConstants.spacingMedium;
-    final iconPadding = isCompact ? 6.0 : AppConstants.spacingSmall;
-    final iconSize = isCompact ? 20.0 : 24.0;
-
-    return GestureDetector(
-      onTap: () {
-        HapticFeedback.lightImpact();
-        _showCosmicInsightSheet(context, insight);
-      },
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(AppConstants.borderRadiusLarge),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-          child: Container(
-            padding: EdgeInsets.all(padding),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(AppConstants.borderRadiusLarge),
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  AppColors.mysticTeal.withOpacity(0.15),
-                  AppColors.glassFill,
-                ],
-              ),
-              border: Border.all(
-                color: AppColors.mysticTeal.withOpacity(0.3),
-                width: 1,
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: AppColors.mysticTeal.withOpacity(0.1),
-                  blurRadius: 15,
-                  spreadRadius: 0,
-                ),
-              ],
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // Moon Phase Icon with glow
-                Container(
-                  padding: EdgeInsets.all(iconPadding),
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: AppColors.mysticTeal.withOpacity(0.2),
-                    boxShadow: [
-                      BoxShadow(
-                        color: AppColors.mysticTeal.withOpacity(0.3),
-                        blurRadius: 10,
-                        spreadRadius: 2,
-                      ),
-                    ],
-                  ),
-                  child: Icon(
-                    insight.moonPhaseIconData,
-                    color: AppColors.mysticTeal,
-                    size: iconSize,
-                  ),
-                ),
-
-                SizedBox(height: isCompact ? 4 : AppConstants.spacingSmall),
-
-                // Moon Phase Name
-                Text(
-                  insight.moonPhase,
-                  style: AppTypography.titleSmall.copyWith(
-                    color: AppColors.textPrimary,
-                  ),
-                ),
-
-                SizedBox(height: isCompact ? 2 : AppConstants.spacingXSmall),
-
-                // Moon Sign with symbol
-                Row(
-                  children: [
-                    Text(
-                      insight.moonSignSymbol,
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: insight.elementColor,
-                      ),
-                    ),
-                    const SizedBox(width: 4),
-                    Flexible(
-                      child: Text(
-                        'Moon in ${insight.moonSign}',
-                        style: AppTypography.bodySmall.copyWith(
-                          color: AppColors.textTertiary,
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  void _showCosmicInsightSheet(BuildContext context, DailyInsight insight) {
+  void _showCosmicInsightSheet(BuildContext context, insight) {
+    HapticFeedback.lightImpact();
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) => _CosmicInsightBottomSheet(insight: insight),
-    );
-  }
-
-  Widget _buildActionCard({
-    required IconData icon,
-    required String title,
-    required String subtitle,
-    required Color color,
-    required VoidCallback onTap,
-    bool isCompact = false,
-  }) {
-    final padding = isCompact ? AppConstants.spacingSmall : AppConstants.spacingMedium;
-    final iconPadding = isCompact ? 6.0 : AppConstants.spacingSmall;
-    final iconSize = isCompact ? 20.0 : 24.0;
-
-    return GestureDetector(
-      onTap: onTap,
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(AppConstants.borderRadiusLarge),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-          child: Container(
-            padding: EdgeInsets.all(padding),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(AppConstants.borderRadiusLarge),
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  color.withOpacity(0.15),
-                  AppColors.glassFill,
-                ],
-              ),
-              border: Border.all(
-                color: color.withOpacity(0.3),
-                width: 1,
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: color.withOpacity(0.1),
-                  blurRadius: 15,
-                  spreadRadius: 0,
-                ),
-              ],
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // Icon with glow
-                Container(
-                  padding: EdgeInsets.all(iconPadding),
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: color.withOpacity(0.2),
-                    boxShadow: [
-                      BoxShadow(
-                        color: color.withOpacity(0.3),
-                        blurRadius: 10,
-                        spreadRadius: 2,
-                      ),
-                    ],
-                  ),
-                  child: Icon(
-                    icon,
-                    color: color,
-                    size: iconSize,
-                  ),
-                ),
-
-                SizedBox(height: isCompact ? 4 : AppConstants.spacingSmall),
-
-                // Title
-                Text(
-                  title,
-                  style: AppTypography.titleSmall.copyWith(
-                    color: AppColors.textPrimary,
-                  ),
-                ),
-
-                SizedBox(height: isCompact ? 2 : AppConstants.spacingXSmall),
-
-                // Subtitle
-                Text(
-                  subtitle,
-                  style: AppTypography.bodySmall.copyWith(
-                    color: AppColors.textTertiary,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Bottom sheet showing detailed cosmic insight.
-class _CosmicInsightBottomSheet extends StatelessWidget {
-  final DailyInsight insight;
-
-  const _CosmicInsightBottomSheet({required this.insight});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: AppColors.background,
-        borderRadius: const BorderRadius.only(
-          topLeft: Radius.circular(24),
-          topRight: Radius.circular(24),
-        ),
-        border: Border.all(
-          color: AppColors.mysticTeal.withOpacity(0.3),
-        ),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // Handle bar
-          Container(
-            margin: const EdgeInsets.only(top: 12),
-            width: 40,
-            height: 4,
-            decoration: BoxDecoration(
-              color: AppColors.textTertiary.withOpacity(0.5),
-              borderRadius: BorderRadius.circular(2),
-            ),
-          ),
-
-          Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              children: [
-                // Moon Phase Icon (Large)
-                Container(
-                  padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [
-                        AppColors.mysticTeal.withOpacity(0.3),
-                        AppColors.mysticTeal.withOpacity(0.1),
-                      ],
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: AppColors.mysticTeal.withOpacity(0.3),
-                        blurRadius: 20,
-                        spreadRadius: 5,
-                      ),
-                    ],
-                  ),
-                  child: Icon(
-                    insight.moonPhaseIconData,
-                    color: AppColors.mysticTeal,
-                    size: 48,
-                  ),
-                )
-                    .animate()
-                    .fadeIn(duration: 400.ms)
-                    .scale(begin: const Offset(0.8, 0.8), end: const Offset(1, 1)),
-
-                const SizedBox(height: 20),
-
-                // Moon Phase Name
-                Text(
-                  insight.moonPhase,
-                  style: AppTypography.headlineSmall.copyWith(
-                    color: AppColors.textPrimary,
-                  ),
-                )
-                    .animate()
-                    .fadeIn(delay: 100.ms, duration: 400.ms),
-
-                const SizedBox(height: 8),
-
-                // Moon Sign with Element
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(
-                      insight.moonSignSymbol,
-                      style: TextStyle(
-                        fontSize: 18,
-                        color: insight.elementColor,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      'Moon in ${insight.moonSign}',
-                      style: AppTypography.titleMedium.copyWith(
-                        color: AppColors.textSecondary,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 4,
-                      ),
-                      decoration: BoxDecoration(
-                        color: insight.elementColor.withOpacity(0.2),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Text(
-                        insight.moonElement,
-                        style: AppTypography.labelSmall.copyWith(
-                          color: insight.elementColor,
-                        ),
-                      ),
-                    ),
-                  ],
-                )
-                    .animate()
-                    .fadeIn(delay: 150.ms, duration: 400.ms),
-
-                const SizedBox(height: 8),
-
-                // Illumination
-                Text(
-                  '${insight.moonIllumination.toStringAsFixed(0)}% Illuminated',
-                  style: AppTypography.bodySmall.copyWith(
-                    color: AppColors.textTertiary,
-                  ),
-                )
-                    .animate()
-                    .fadeIn(delay: 200.ms, duration: 400.ms),
-
-                const SizedBox(height: 24),
-
-                // Divider
-                Container(
-                  width: 100,
-                  height: 1,
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [
-                        Colors.transparent,
-                        AppColors.mysticTeal.withOpacity(0.5),
-                        Colors.transparent,
-                      ],
-                    ),
-                  ),
-                ),
-
-                const SizedBox(height: 24),
-
-                // Mercury Status
-                if (insight.mercuryRetrograde)
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 8,
-                    ),
-                    margin: const EdgeInsets.only(bottom: 16),
-                    decoration: BoxDecoration(
-                      color: AppColors.secondary.withOpacity(0.15),
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(
-                        color: AppColors.secondary.withOpacity(0.3),
-                      ),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          Icons.warning_amber_rounded,
-                          size: 16,
-                          color: AppColors.secondary,
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          'Mercury Retrograde',
-                          style: AppTypography.labelMedium.copyWith(
-                            color: AppColors.secondary,
-                          ),
-                        ),
-                      ],
-                    ),
-                  )
-                      .animate()
-                      .fadeIn(delay: 250.ms, duration: 400.ms)
-                      .shake(hz: 2, rotation: 0.02),
-
-                // Advice
-                Container(
-                  padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                    color: AppColors.glassFill,
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(
-                      color: AppColors.mysticTeal.withOpacity(0.2),
-                    ),
-                  ),
-                  child: Column(
-                    children: [
-                      Icon(
-                        Icons.auto_awesome,
-                        size: 20,
-                        color: AppColors.mysticTeal.withOpacity(0.7),
-                      ),
-                      const SizedBox(height: 12),
-                      Text(
-                        insight.advice,
-                        style: AppTypography.mysticalQuote.copyWith(
-                          color: AppColors.textPrimary,
-                          height: 1.6,
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-                    ],
-                  ),
-                )
-                    .animate()
-                    .fadeIn(delay: 300.ms, duration: 500.ms)
-                    .slideY(begin: 0.1, end: 0),
-
-                const SizedBox(height: 24),
-
-                // Close button
-                GestureDetector(
-                  onTap: () => Navigator.of(context).pop(),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 32,
-                      vertical: 12,
-                    ),
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(24),
-                      border: Border.all(
-                        color: AppColors.textTertiary.withOpacity(0.3),
-                      ),
-                    ),
-                    child: Text(
-                      'Close',
-                      style: AppTypography.labelMedium.copyWith(
-                        color: AppColors.textSecondary,
-                      ),
-                    ),
-                  ),
-                )
-                    .animate()
-                    .fadeIn(delay: 400.ms, duration: 400.ms),
-
-                // Bottom padding for safe area
-                SizedBox(height: MediaQuery.of(context).padding.bottom),
-              ],
-            ),
-          ),
-        ],
-      ),
+      builder: (context) => CosmicInsightBottomSheet(insight: insight),
     );
   }
 }

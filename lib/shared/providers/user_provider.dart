@@ -60,6 +60,12 @@ class UserNotifier extends StateNotifier<UserModel> {
     _saveToFirestore();
   }
 
+  /// Set the user's gender.
+  void setGender(String gender) {
+    state = state.copyWith(gender: gender);
+    _saveToFirestore();
+  }
+
   /// Set the user's birth data.
   void setBirthData({
     required String date,
@@ -87,6 +93,36 @@ class UserNotifier extends StateNotifier<UserModel> {
       risingSign: risingSign,
     );
     _saveToFirestore();
+  }
+
+  /// Set the user's relationship status.
+  void setRelationshipStatus(String status) {
+    state = state.copyWith(relationshipStatus: status);
+    _saveToFirestore();
+  }
+
+  /// Set the user's spiritual intentions.
+  void setIntentions(List<String> intentions) {
+    state = state.copyWith(intentions: intentions);
+    _saveToFirestore();
+  }
+
+  /// Set the user's esoteric knowledge level.
+  void setKnowledgeLevel(String level) {
+    state = state.copyWith(knowledgeLevel: level);
+    _saveToFirestore();
+  }
+
+  /// Set the user's preferred reading tone.
+  void setPreferredTone(String tone) {
+    state = state.copyWith(preferredTone: tone);
+    _saveToFirestore();
+  }
+
+  /// Set the user's profile image URL.
+  void setProfileImageUrl(String url) {
+    state = state.copyWith(profileImageUrl: url);
+    // Note: Not saving to Firestore here as it's already saved separately
   }
 
   /// Mark onboarding as complete.

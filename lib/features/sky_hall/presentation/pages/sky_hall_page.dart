@@ -9,9 +9,10 @@ import '../../../../shared/widgets/widgets.dart';
 import '../../data/providers/sky_hall_provider.dart';
 import '../widgets/natal_chart_painter.dart';
 import '../widgets/planet_info_card.dart';
-import 'love_match_screen.dart';
+import '../widgets/daily_horoscope_widget.dart';
+import '../widgets/astro_guide_chat_widget.dart';
 
-/// Sky Hall - Astrology feature page with natal chart and love match.
+/// Sky Hall - Astrology feature page with 3 sub-tabs: Daily, Chart, Guide.
 class SkyHallPage extends ConsumerStatefulWidget {
   const SkyHallPage({super.key});
 
@@ -27,7 +28,8 @@ class _SkyHallPageState extends ConsumerState<SkyHallPage>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
+    // 3 tabs: Daily, Chart, Guide
+    _tabController = TabController(length: 3, vsync: this);
 
     // Load natal chart on init if we have birth data
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -64,27 +66,30 @@ class _SkyHallPageState extends ConsumerState<SkyHallPage>
       child: SafeArea(
         bottom: false, // Bottom nav handles this
         child: Column(
-            children: [
-              // Header
-              _buildHeader(userName ?? 'Seeker'),
+          children: [
+            // Header
+            _buildHeader(userName ?? 'Seeker'),
 
-              // Tab Bar
-              _buildTabBar(),
+            // Tab Bar (Trinity Tabs)
+            _buildTrinityTabBar(),
 
-              // Content
-              Expanded(
-                child: TabBarView(
-                  controller: _tabController,
-                  children: [
-                    // My Chart Tab
-                    _buildMyChartTab(chartState),
+            // Content
+            Expanded(
+              child: TabBarView(
+                controller: _tabController,
+                children: [
+                  // Tab 1: Daily (Cosmic Pulse)
+                  const DailyHoroscopeWidget(),
 
-                    // Love Match Tab
-                    const LoveMatchScreen(),
-                  ],
-                ),
+                  // Tab 2: Chart (Natal Wheel)
+                  _buildChartTab(chartState),
+
+                  // Tab 3: Guide (Astro Chat)
+                  const AstroGuideChatWidget(),
+                ],
               ),
-            ],
+            ),
+          ],
         ),
       ),
     );
@@ -143,7 +148,7 @@ class _SkyHallPageState extends ConsumerState<SkyHallPage>
             onTap: () {
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
-                  content: Text('View your natal chart and check love compatibility'),
+                  content: Text('View your daily forecast, natal chart, and chat with your astro guide'),
                   backgroundColor: AppColors.mysticTeal.withOpacity(0.9),
                   behavior: SnackBarBehavior.floating,
                   shape: RoundedRectangleBorder(
@@ -171,7 +176,7 @@ class _SkyHallPageState extends ConsumerState<SkyHallPage>
     ).animate().fadeIn(duration: 400.ms).slideY(begin: -0.2, end: 0);
   }
 
-  Widget _buildTabBar() {
+  Widget _buildTrinityTabBar() {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: AppConstants.spacingMedium),
       padding: const EdgeInsets.all(4),
@@ -215,14 +220,45 @@ class _SkyHallPageState extends ConsumerState<SkyHallPage>
         splashFactory: NoSplash.splashFactory,
         overlayColor: WidgetStateProperty.all(Colors.transparent),
         tabs: const [
-          Tab(text: 'My Chart'),
-          Tab(text: 'Love Match'),
+          Tab(
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.wb_sunny_outlined, size: 16),
+                SizedBox(width: 4),
+                Text('Daily'),
+              ],
+            ),
+          ),
+          Tab(
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.radio_button_unchecked, size: 16),
+                SizedBox(width: 4),
+                Text('Chart'),
+              ],
+            ),
+          ),
+          Tab(
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.auto_awesome, size: 16),
+                SizedBox(width: 4),
+                Text('Guide'),
+              ],
+            ),
+          ),
         ],
       ),
     ).animate().fadeIn(delay: 200.ms, duration: 400.ms);
   }
 
-  Widget _buildMyChartTab(NatalChartState chartState) {
+  Widget _buildChartTab(NatalChartState chartState) {
     if (chartState.isLoading) {
       return _buildLoadingState();
     }
@@ -434,7 +470,7 @@ class _SkyHallPageState extends ConsumerState<SkyHallPage>
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Text(
-              '✨',
+              '\u2728',
               style: TextStyle(fontSize: 48),
             ),
             const SizedBox(height: AppConstants.spacingMedium),

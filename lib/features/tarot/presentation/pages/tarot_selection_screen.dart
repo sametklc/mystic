@@ -9,21 +9,36 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_typography.dart';
 import '../../../../shared/widgets/mystic_background/mystic_background_scaffold.dart';
-import '../widgets/energy_charge_widget.dart';
+import '../../../home/presentation/providers/character_provider.dart';
+import '../widgets/card_dealing_widget.dart';
 import '../widgets/tarot_card_fan.dart';
 import 'tarot_reveal_screen.dart';
 
 /// Phases of the tarot selection ritual.
 enum TarotSelectionPhase {
-  /// Initial phase - show energy charge widget
-  charging,
+  /// Initial phase - show messy stack for shuffle ritual
+  shuffling,
   /// Cards are spread and ready for selection
   selection,
 }
 
 /// Screen where users select their tarot card.
 class TarotSelectionScreen extends ConsumerStatefulWidget {
-  const TarotSelectionScreen({super.key});
+  /// Whether this screen is embedded in a tab (hides back button).
+  final bool isTabMode;
+
+  /// Whether to skip the shuffling phase and go directly to selection.
+  final bool skipCharging;
+
+  /// Optional initial question text.
+  final String? initialQuestion;
+
+  const TarotSelectionScreen({
+    super.key,
+    this.isTabMode = false,
+    this.skipCharging = false,
+    this.initialQuestion,
+  });
 
   @override
   ConsumerState<TarotSelectionScreen> createState() =>
@@ -40,7 +55,7 @@ class _TarotSelectionScreenState extends ConsumerState<TarotSelectionScreen>
   bool _isTransitioning = false;
 
   /// Current phase of the selection ritual.
-  TarotSelectionPhase _phase = TarotSelectionPhase.charging;
+  late TarotSelectionPhase _phase;
 
   late AnimationController _headerController;
   late AnimationController _inputGlowController;
@@ -49,6 +64,17 @@ class _TarotSelectionScreenState extends ConsumerState<TarotSelectionScreen>
   @override
   void initState() {
     super.initState();
+
+    // Set initial phase based on skipCharging
+    _phase = widget.skipCharging
+        ? TarotSelectionPhase.selection
+        : TarotSelectionPhase.shuffling;
+
+    // Set initial question if provided
+    if (widget.initialQuestion != null) {
+      _questionController.text = widget.initialQuestion!;
+    }
+
     _headerController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1000),
@@ -63,6 +89,11 @@ class _TarotSelectionScreenState extends ConsumerState<TarotSelectionScreen>
       vsync: this,
       duration: const Duration(milliseconds: 800),
     );
+
+    // If skipping shuffle, show cards immediately
+    if (widget.skipCharging) {
+      _fanRevealController.forward();
+    }
 
     _questionFocusNode.addListener(() {
       setState(() {});
@@ -79,8 +110,8 @@ class _TarotSelectionScreenState extends ConsumerState<TarotSelectionScreen>
     super.dispose();
   }
 
-  /// Called when energy charging is complete.
-  void _onChargeComplete() {
+  /// Called when shuffle ritual is complete.
+  void _onShuffleComplete() {
     setState(() {
       _phase = TarotSelectionPhase.selection;
     });
@@ -93,6 +124,7 @@ class _TarotSelectionScreenState extends ConsumerState<TarotSelectionScreen>
 
     setState(() {
       _selectedCardIndex = cardIndex;
+      _isTransitioning = true; // Set transitioning IMMEDIATELY on selection
     });
 
     HapticFeedback.heavyImpact();
@@ -106,15 +138,14 @@ class _TarotSelectionScreenState extends ConsumerState<TarotSelectionScreen>
   }
 
   void _navigateToProcessing(int cardIndex) {
-    setState(() {
-      _isTransitioning = true;
-    });
-
     final cardName = majorArcana[cardIndex].name;
 
     // Randomly determine if card is upright (75% upright, 25% reversed)
     final random = Random();
     final isUpright = random.nextDouble() > 0.25;
+
+    // Get the selected character ID
+    final selectedCharacterId = ref.read(selectedCharacterIdProvider);
 
     // Navigate to reveal screen
     Navigator.of(context).push(
@@ -126,6 +157,7 @@ class _TarotSelectionScreenState extends ConsumerState<TarotSelectionScreen>
             cardIndex: cardIndex,
             cardName: cardName,
             isUpright: isUpright,
+            characterId: selectedCharacterId,
           );
         },
         transitionsBuilder: (context, animation, secondaryAnimation, child) {
@@ -142,6 +174,13 @@ class _TarotSelectionScreenState extends ConsumerState<TarotSelectionScreen>
         setState(() {
           _selectedCardIndex = null;
           _isTransitioning = false;
+          // In tab mode, stay in selection phase (no need to re-shuffle)
+          // Only reset to shuffling in non-tab mode if charging is enabled
+          if (!widget.isTabMode && !widget.skipCharging) {
+            _phase = TarotSelectionPhase.shuffling;
+            _fanRevealController.reset();
+          }
+          // In tab mode or skipCharging, keep selection phase ready
         });
       }
     });
@@ -154,7 +193,11 @@ class _TarotSelectionScreenState extends ConsumerState<TarotSelectionScreen>
   @override
   Widget build(BuildContext context) {
     final keyboardVisible = MediaQuery.of(context).viewInsets.bottom > 0;
-    final isCharging = _phase == TarotSelectionPhase.charging;
+
+    // Use grid layout in tab mode, fan layout otherwise
+    if (widget.isTabMode) {
+      return _buildTabModeLayout(keyboardVisible);
+    }
 
     return MysticBackgroundScaffold(
       child: GestureDetector(
@@ -178,46 +221,30 @@ class _TarotSelectionScreenState extends ConsumerState<TarotSelectionScreen>
             SizedBox(height: keyboardVisible ? 20 : 40),
 
             // Visionary Mode Toggle
-            if (_selectedCardIndex == null && !isCharging)
+            if (_selectedCardIndex == null)
               _buildVisionaryToggle()
                   .animate()
                   .fadeIn(delay: 500.ms, duration: 600.ms),
 
             const Spacer(flex: 1),
 
-            // Energy Charge Widget (Charging Phase)
-            if (isCharging && !keyboardVisible)
-              EnergyChargeWidget(
-                onChargeComplete: _onChargeComplete,
-                chargeDuration: const Duration(seconds: 3),
-              ).animate().fadeIn(delay: 600.ms, duration: 600.ms),
-
-            // Card Fan (Selection Phase)
-            if (!isCharging && !keyboardVisible)
-              AnimatedBuilder(
-                animation: _fanRevealController,
-                builder: (context, child) {
-                  return Transform.scale(
-                    scale: 0.8 + (_fanRevealController.value * 0.2),
-                    child: Opacity(
-                      opacity: _fanRevealController.value,
-                      child: SizedBox(
-                        height: 220,
-                        child: TarotCardFan(
-                          onCardSelected: _onCardSelected,
-                          selectedCardIndex: _selectedCardIndex,
-                          selectionEnabled: _selectedCardIndex == null,
-                        ),
-                      ),
-                    ),
-                  );
-                },
-              ),
+            // Card Dealing Widget (handles both shuffling and selection)
+            if (!keyboardVisible)
+              SizedBox(
+                height: 320,
+                child: CardDealingWidget(
+                  onDealingComplete: _onShuffleComplete,
+                  onCardSelected: _onCardSelected,
+                  selectedCardIndex: _selectedCardIndex,
+                  selectionEnabled: _selectedCardIndex == null,
+                  isTransitioning: _isTransitioning,
+                ),
+              ).animate().fadeIn(delay: 400.ms, duration: 600.ms),
 
             const Spacer(flex: 2),
 
-            // Instruction Text
-            if (_selectedCardIndex == null && !keyboardVisible && !isCharging)
+            // Instruction Text (shown when cards are dealt)
+            if (_selectedCardIndex == null && !keyboardVisible && _phase == TarotSelectionPhase.selection)
               _buildInstructionText()
                   .animate()
                   .fadeIn(delay: 800.ms, duration: 600.ms),
@@ -230,37 +257,127 @@ class _TarotSelectionScreenState extends ConsumerState<TarotSelectionScreen>
     );
   }
 
+  /// Tab mode layout with grid cards
+  Widget _buildTabModeLayout(bool keyboardVisible) {
+    return MysticBackgroundScaffold(
+      child: GestureDetector(
+        onTap: _dismissKeyboard,
+        behavior: HitTestBehavior.opaque,
+        child: SafeArea(
+          child: Column(
+            children: [
+              // Header (fixed)
+              _buildHeader(),
+
+              // Scrollable content
+              Expanded(
+                child: SingleChildScrollView(
+                  physics: const BouncingScrollPhysics(),
+                  child: Column(
+                    children: [
+                      const SizedBox(height: 16),
+
+                      // Question Input Section
+                      if (!keyboardVisible || _selectedCardIndex == null)
+                        _buildQuestionInput()
+                            .animate()
+                            .fadeIn(delay: 200.ms, duration: 400.ms),
+
+                      const SizedBox(height: 16),
+
+                      // Visionary Mode Toggle
+                      if (_selectedCardIndex == null)
+                        _buildVisionaryToggle()
+                            .animate()
+                            .fadeIn(delay: 300.ms, duration: 400.ms),
+
+                      const SizedBox(height: 24),
+
+                      // Card Dealing Widget (handles both shuffling and selection)
+                      if (!keyboardVisible)
+                        SizedBox(
+                          height: 340,
+                          child: CardDealingWidget(
+                            onDealingComplete: _onShuffleComplete,
+                            onCardSelected: _onCardSelected,
+                            selectedCardIndex: _selectedCardIndex,
+                            selectionEnabled: _selectedCardIndex == null,
+                            isTransitioning: _isTransitioning,
+                          ),
+                        ),
+
+                      const SizedBox(height: 16),
+
+                      // Instruction Text
+                      if (_selectedCardIndex == null && !keyboardVisible && _phase == TarotSelectionPhase.selection)
+                        _buildInstructionText()
+                            .animate()
+                            .fadeIn(delay: 400.ms, duration: 400.ms),
+
+                      const SizedBox(height: 24),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildHeader() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
       child: Row(
         children: [
-          // Back button
-          IconButton(
-            onPressed: () => Navigator.of(context).pop(),
-            icon: const Icon(
-              Icons.arrow_back_ios_new,
-              color: AppColors.textSecondary,
-              size: 20,
-            ),
-          ),
-          const Spacer(),
-          // Title
-          Text(
-            'TAROT',
-            style: AppTypography.headlineLarge.copyWith(
-              color: AppColors.primary,
-              letterSpacing: 4,
-            ),
-          )
-              .animate(controller: _headerController)
-              .fadeIn(duration: 800.ms)
-              .shimmer(
-                duration: 2000.ms,
-                color: AppColors.primaryLight.withOpacity(0.3),
+          // Back button - only show if not in tab mode
+          if (!widget.isTabMode)
+            IconButton(
+              onPressed: () => Navigator.of(context).pop(),
+              icon: const Icon(
+                Icons.arrow_back_ios_new,
+                color: AppColors.textSecondary,
+                size: 20,
               ),
-          const Spacer(),
-          const SizedBox(width: 48), // Balance the back button
+            ),
+          if (!widget.isTabMode) const Spacer(),
+          // Title - centered for tab mode
+          if (widget.isTabMode)
+            Expanded(
+              child: Center(
+                child: Text(
+                  'ASK THE ORACLE',
+                  style: AppTypography.headlineLarge.copyWith(
+                    color: AppColors.primary,
+                    letterSpacing: 3,
+                    fontSize: 22,
+                  ),
+                )
+                    .animate(controller: _headerController)
+                    .fadeIn(duration: 800.ms)
+                    .shimmer(
+                      duration: 2000.ms,
+                      color: AppColors.primaryLight.withOpacity(0.3),
+                    ),
+              ),
+            )
+          else
+            Text(
+              'TAROT',
+              style: AppTypography.headlineLarge.copyWith(
+                color: AppColors.primary,
+                letterSpacing: 4,
+              ),
+            )
+                .animate(controller: _headerController)
+                .fadeIn(duration: 800.ms)
+                .shimmer(
+                  duration: 2000.ms,
+                  color: AppColors.primaryLight.withOpacity(0.3),
+                ),
+          if (!widget.isTabMode) const Spacer(),
+          if (!widget.isTabMode) const SizedBox(width: 48),
         ],
       ),
     );
@@ -459,7 +576,7 @@ class _TarotSelectionScreenState extends ConsumerState<TarotSelectionScreen>
             ),
             const SizedBox(width: 8),
             Text(
-              'Scroll and tap to select your card',
+              'Tap any card to reveal your message',
               style: AppTypography.bodySmall.copyWith(
                 color: AppColors.textTertiary,
               ),

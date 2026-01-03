@@ -15,9 +15,17 @@ class OnboardingBirthDataScreen extends ConsumerStatefulWidget {
   /// Callback when the user completes this step
   final VoidCallback? onComplete;
 
+  /// Current onboarding step (0-indexed)
+  final int currentStep;
+
+  /// Total onboarding steps
+  final int totalSteps;
+
   const OnboardingBirthDataScreen({
     super.key,
     this.onComplete,
+    this.currentStep = 1,
+    this.totalSteps = 4,
   });
 
   @override
@@ -26,8 +34,7 @@ class OnboardingBirthDataScreen extends ConsumerStatefulWidget {
 }
 
 class _OnboardingBirthDataScreenState
-    extends ConsumerState<OnboardingBirthDataScreen>
-    with TickerProviderStateMixin {
+    extends ConsumerState<OnboardingBirthDataScreen> {
   // Birth data
   DateTime? _birthDate;
   DateTime? _birthTime;
@@ -40,9 +47,6 @@ class _OnboardingBirthDataScreenState
   bool _showQuestion = false;
   bool _showPickers = false;
   bool _showButton = false;
-  bool _isCalculating = false;
-  bool _showWheel = false;
-  bool _showResult = false;
   bool _isExiting = false;
 
   // Result data
@@ -73,32 +77,19 @@ class _OnboardingBirthDataScreenState
 
   /// Show the button when data is complete
   void _maybeShowButton() {
-    if (_isDataComplete && !_showButton && !_isCalculating) {
+    if (_isDataComplete && !_showButton) {
       setState(() => _showButton = true);
     }
   }
 
-  /// Start the calculation animation
-  Future<void> _onRevealDestiny() async {
+  /// Continue to next step - save data without reveal animation
+  Future<void> _onContinue() async {
     if (!_isDataComplete) return;
 
     // Haptic feedback for button press
     HapticFeedback.mediumImpact();
 
-    // Hide inputs, show wheel
-    setState(() {
-      _isCalculating = true;
-      _showButton = false;
-      _showPickers = false;
-      _showQuestion = false;
-    });
-
-    await Future.delayed(const Duration(milliseconds: 400));
-
-    if (!mounted) return;
-    setState(() => _showWheel = true);
-
-    // Calculate the profile while wheel is spinning
+    // Calculate the profile (quietly, no animation)
     final birthData = BirthDataModel(
       birthDate: _birthDate,
       birthTime: _birthTime,
@@ -106,29 +97,13 @@ class _OnboardingBirthDataScreenState
     );
 
     _profile = await AstrologyService.calculateProfile(birthData);
-  }
-
-  /// Called when the wheel spin completes
-  void _onSpinComplete() {
-    // Final haptic burst
-    HapticFeedback.heavyImpact();
-
-    Future.delayed(const Duration(milliseconds: 500), () {
-      if (!mounted) return;
-      setState(() => _showResult = true);
-    });
-  }
-
-  /// Proceed to next step
-  Future<void> _onContinue() async {
-    HapticFeedback.lightImpact();
 
     // Save birth data to user provider
     _saveBirthData();
 
     setState(() => _isExiting = true);
 
-    await Future.delayed(const Duration(milliseconds: 800));
+    await Future.delayed(const Duration(milliseconds: 400));
 
     widget.onComplete?.call();
   }
@@ -165,7 +140,7 @@ class _OnboardingBirthDataScreenState
   @override
   Widget build(BuildContext context) {
     // Show button when data is complete
-    if (_isDataComplete && !_showButton && !_isCalculating) {
+    if (_isDataComplete && !_showButton) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _maybeShowButton();
       });
@@ -175,14 +150,10 @@ class _OnboardingBirthDataScreenState
       resizeToAvoidBottomInset: true,
       body: MysticBackgroundScaffold(
         child: SafeArea(
-          child: Stack(
-            children: [
-              // Main content
-              if (!_isCalculating) _buildInputPhase(),
-
-              // Calculation phase
-              if (_isCalculating) _buildCalculationPhase(),
-            ],
+          child: GestureDetector(
+            onTap: () => FocusScope.of(context).unfocus(),
+            behavior: HitTestBehavior.opaque,
+            child: _buildInputPhase(),
           ),
         ),
       ),
@@ -190,32 +161,51 @@ class _OnboardingBirthDataScreenState
   }
 
   Widget _buildInputPhase() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(
-        horizontal: AppConstants.spacingLarge,
-      ),
-      child: Column(
-        children: [
-          const Spacer(flex: 2),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppConstants.spacingLarge,
+          ),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              minHeight: constraints.maxHeight,
+            ),
+            child: IntrinsicHeight(
+              child: Column(
+                children: [
+                  const SizedBox(height: AppConstants.spacingMedium),
 
-          // Question text
-          _buildQuestion(),
+                  // Progress bar
+                  MysticProgressBar(
+                    totalSteps: widget.totalSteps,
+                    currentStep: widget.currentStep,
+                  ),
 
-          const SizedBox(height: AppConstants.spacingXXLarge),
+                  const Spacer(flex: 1),
 
-          // Pickers
-          if (_showPickers) ...[
-            _buildPickers(),
-            const Spacer(flex: 2),
-          ] else
-            const Spacer(flex: 3),
+                  // Question text
+                  _buildQuestion(),
 
-          // Reveal button
-          _buildRevealButton(),
+                  const SizedBox(height: AppConstants.spacingXXLarge),
 
-          const SizedBox(height: AppConstants.spacingXXLarge),
-        ],
-      ),
+                  // Pickers
+                  if (_showPickers) ...[
+                    _buildPickers(),
+                    const Spacer(flex: 2),
+                  ] else
+                    const Spacer(flex: 3),
+
+                  // Continue button
+                  _buildContinueButton(),
+
+                  const SizedBox(height: AppConstants.spacingXXLarge),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -301,264 +291,13 @@ class _OnboardingBirthDataScreenState
     );
   }
 
-  Widget _buildRevealButton() {
+  Widget _buildContinueButton() {
     if (!_showButton || !_isDataComplete) {
-      return const SizedBox(height: 60);
+      return const SizedBox(height: 56);
     }
 
-    return _MysticRevealButton(
-      onPressed: _onRevealDestiny,
-    )
-        .animate()
-        .fadeIn(duration: 600.ms)
-        .scale(
-          begin: const Offset(0.9, 0.9),
-          end: const Offset(1.0, 1.0),
-          duration: 600.ms,
-          curve: Curves.easeOutBack,
-        );
-  }
-
-  Widget _buildCalculationPhase() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          // Zodiac wheel
-          if (_showWheel)
-            ZodiacWheel(
-              size: 300,
-              isSpinning: !_showResult,
-              spinDuration: const Duration(seconds: 4),
-              highlightedSign: _profile?.sunSign,
-              enableHaptics: true,
-              onSpinComplete: _onSpinComplete,
-            )
-                .animate()
-                .fadeIn(duration: 800.ms)
-                .scale(
-                  begin: const Offset(0.5, 0.5),
-                  end: const Offset(1.0, 1.0),
-                  duration: 800.ms,
-                  curve: Curves.easeOutBack,
-                ),
-
-          const SizedBox(height: AppConstants.spacingXLarge),
-
-          // Result text
-          if (_showResult) _buildResultSection(),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildResultSection() {
-    if (_profile == null) return const SizedBox();
-
-    Widget content = Padding(
-      padding: const EdgeInsets.symmetric(
-        horizontal: AppConstants.spacingLarge,
-      ),
-      child: Column(
-        children: [
-          // Cosmic signature symbols
-          Text(
-            _profile!.cosmicSignature,
-            style: AppTypography.displayMedium.copyWith(
-              color: AppColors.primary,
-              letterSpacing: 8,
-              shadows: [
-                Shadow(
-                  color: AppColors.primaryGlow,
-                  blurRadius: 20,
-                ),
-              ],
-            ),
-          )
-              .animate()
-              .fadeIn(duration: 800.ms)
-              .scale(
-                begin: const Offset(0.8, 0.8),
-                end: const Offset(1.0, 1.0),
-                duration: 800.ms,
-              ),
-
-          const SizedBox(height: AppConstants.spacingLarge),
-
-          // Main signs text
-          Text(
-            'Sun: ${_profile!.sunSign.name}',
-            style: AppTypography.headlineMedium.copyWith(
-              color: AppColors.textPrimary,
-            ),
-          )
-              .animate()
-              .fadeIn(delay: 300.ms, duration: 600.ms)
-              .slideY(begin: 0.2, end: 0, delay: 300.ms, duration: 600.ms),
-
-          const SizedBox(height: AppConstants.spacingSmall),
-
-          Text(
-            'Rising: ${_profile!.ascendantSign.name}',
-            style: AppTypography.bodyLarge.copyWith(
-              color: AppColors.textSecondary,
-            ),
-          )
-              .animate()
-              .fadeIn(delay: 500.ms, duration: 600.ms)
-              .slideY(begin: 0.2, end: 0, delay: 500.ms, duration: 600.ms),
-
-          const SizedBox(height: AppConstants.spacingXLarge),
-
-          // Aura description
-          Container(
-            padding: const EdgeInsets.all(AppConstants.spacingMedium),
-            decoration: BoxDecoration(
-              color: AppColors.primarySurface,
-              borderRadius: BorderRadius.circular(AppConstants.borderRadiusMedium),
-              border: Border.all(
-                color: AppColors.primary.withOpacity(0.3),
-              ),
-            ),
-            child: Text(
-              _profile!.auraDescription,
-              textAlign: TextAlign.center,
-              style: AppTypography.mysticalQuote.copyWith(
-                color: AppColors.primary,
-              ),
-            ),
-          )
-              .animate()
-              .fadeIn(delay: 800.ms, duration: 800.ms)
-              .slideY(begin: 0.2, end: 0, delay: 800.ms, duration: 800.ms),
-
-          const SizedBox(height: AppConstants.spacingXXLarge),
-
-          // Continue button
-          _MysticContinueButton(
-            label: 'Meet Your Guide',
-            onPressed: _onContinue,
-          )
-              .animate()
-              .fadeIn(delay: 1200.ms, duration: 600.ms)
-              .slideY(begin: 0.3, end: 0, delay: 1200.ms, duration: 600.ms),
-        ],
-      ),
-    );
-
-    // Apply exit animation if exiting
-    if (_isExiting) {
-      content = content
-          .animate()
-          .fadeOut(duration: 600.ms)
-          .slideY(begin: 0, end: -0.2, duration: 600.ms);
-    }
-
-    return content;
-  }
-}
-
-/// Dramatic "Reveal Destiny" button
-class _MysticRevealButton extends StatefulWidget {
-  final VoidCallback onPressed;
-
-  const _MysticRevealButton({required this.onPressed});
-
-  @override
-  State<_MysticRevealButton> createState() => _MysticRevealButtonState();
-}
-
-class _MysticRevealButtonState extends State<_MysticRevealButton>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _pulseController;
-
-  @override
-  void initState() {
-    super.initState();
-    _pulseController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1500),
-    )..repeat(reverse: true);
-  }
-
-  @override
-  void dispose() {
-    _pulseController.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _pulseController,
-      builder: (context, child) {
-        final scale = 1.0 + _pulseController.value * 0.03;
-        final glowOpacity = 0.3 + _pulseController.value * 0.4;
-
-        return Transform.scale(
-          scale: scale,
-          child: Container(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(AppConstants.borderRadiusLarge),
-              boxShadow: [
-                BoxShadow(
-                  color: AppColors.primary.withOpacity(glowOpacity),
-                  blurRadius: 25,
-                  spreadRadius: 5,
-                ),
-                BoxShadow(
-                  color: AppColors.secondary.withOpacity(glowOpacity * 0.5),
-                  blurRadius: 40,
-                  spreadRadius: 10,
-                ),
-              ],
-            ),
-            child: ElevatedButton(
-              onPressed: widget.onPressed,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.primary,
-                foregroundColor: AppColors.textOnPrimary,
-                minimumSize: const Size(double.infinity, 60),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(AppConstants.borderRadiusLarge),
-                ),
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(Icons.auto_awesome, size: 22),
-                  const SizedBox(width: AppConstants.spacingSmall),
-                  Text(
-                    'Reveal Your Destiny',
-                    style: AppTypography.button.copyWith(
-                      fontSize: 18,
-                      letterSpacing: 1.5,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        );
-      },
-    );
-  }
-}
-
-/// Subtle continue button for post-reveal
-class _MysticContinueButton extends StatelessWidget {
-  final String label;
-  final VoidCallback onPressed;
-
-  const _MysticContinueButton({
-    required this.label,
-    required this.onPressed,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onPressed,
+    Widget button = GestureDetector(
+      onTap: _isExiting ? null : _onContinue,
       child: Container(
         padding: const EdgeInsets.symmetric(
           horizontal: AppConstants.spacingXLarge,
@@ -581,22 +320,43 @@ class _MysticContinueButton extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(
-              label,
-              style: AppTypography.labelLarge.copyWith(
-                color: AppColors.primary,
-                letterSpacing: 1.5,
+            if (_isExiting)
+              SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  valueColor: AlwaysStoppedAnimation(AppColors.primary),
+                ),
+              )
+            else
+              Text(
+                'Continue',
+                style: AppTypography.labelLarge.copyWith(
+                  color: AppColors.primary,
+                  letterSpacing: 1.5,
+                ),
               ),
-            ),
-            const SizedBox(width: AppConstants.spacingSmall),
-            const Icon(
-              Icons.arrow_forward_rounded,
-              color: AppColors.primary,
-              size: 18,
-            ),
+            if (!_isExiting) ...[
+              const SizedBox(width: AppConstants.spacingSmall),
+              Icon(
+                Icons.arrow_forward_rounded,
+                color: AppColors.primary,
+                size: 18,
+              ),
+            ],
           ],
         ),
       ),
     );
+
+    button = button.animate().fadeIn(duration: 400.ms).slideY(
+          begin: 0.3,
+          end: 0,
+          duration: 400.ms,
+          curve: Curves.easeOut,
+        );
+
+    return button;
   }
 }

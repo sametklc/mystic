@@ -15,7 +15,11 @@
       "Bash(flutter run:*)",
       "Bash(cat:*)",
       "Bash(pip3 install:*)",
-      "Bash(ipconfig getifaddr:*)"
+      "Bash(ipconfig getifaddr:*)",
+      "Bash(nc:*)",
+      "Bash(pkill -f \"flutter run\")",
+      "Bash(flutter clean:*)",
+      "Bash(flutter build:*)"
     ]
   }
 }

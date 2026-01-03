@@ -4,11 +4,58 @@ Handles natal chart calculations, synastry, transit analysis, and daily insights
 """
 import math
 import os
-from datetime import datetime, date
+from datetime import datetime, date, timedelta, timezone
 from typing import Dict, List, Optional, Tuple
 from kerykeion import AstrologicalSubject, SynastryAspects
 from kerykeion.aspects import NatalAspects
 import httpx
+
+
+# =============================================================================
+# Mystic Date Utilities (7 AM Reset Rule)
+# =============================================================================
+
+def get_mystic_date_string(dt: datetime = None) -> str:
+    """
+    Get the "Mystic Date" string for caching purposes.
+
+    The Mystic Date follows the 7:00 AM rule:
+    - If current time is before 7 AM, return yesterday's date
+    - If current time is 7 AM or after, return today's date
+
+    This ensures that daily readings persist from 7 AM to 7 AM (next day),
+    not midnight to midnight.
+
+    Args:
+        dt: Optional datetime to calculate from (defaults to now in UTC)
+
+    Returns:
+        Date string in YYYY-MM-DD format
+    """
+    if dt is None:
+        dt = datetime.now(timezone.utc)
+
+    # If before 7 AM, count as previous day
+    if dt.hour < 7:
+        logical_date = dt - timedelta(days=1)
+    else:
+        logical_date = dt
+
+    return logical_date.strftime("%Y-%m-%d")
+
+
+def get_mystic_date(dt: datetime = None) -> date:
+    """
+    Get the "Mystic Date" as a date object.
+
+    Args:
+        dt: Optional datetime to calculate from (defaults to now in UTC)
+
+    Returns:
+        Date object representing the logical Mystic Date
+    """
+    mystic_str = get_mystic_date_string(dt)
+    return date.fromisoformat(mystic_str)
 
 # Planet symbols
 PLANET_SYMBOLS = {

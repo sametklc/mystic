@@ -18,6 +18,8 @@ class UserFirestoreService {
     try {
       await _firestore.collection(_collection).doc(deviceId).set({
         'name': user.name,
+        'gender': user.gender,
+        'profileImageUrl': user.profileImageUrl,
         'birthDate': user.birthDate,
         'birthTime': user.birthTime,
         'birthLatitude': user.birthLatitude,
@@ -26,12 +28,28 @@ class UserFirestoreService {
         'birthCity': user.birthCity,
         'sunSign': user.sunSign,
         'risingSign': user.risingSign,
+        'moonSign': user.moonSign,
+        'relationshipStatus': user.relationshipStatus,
+        'intentions': user.intentions,
+        'knowledgeLevel': user.knowledgeLevel,
+        'preferredTone': user.preferredTone,
         'hasCompletedOnboarding': user.hasCompletedOnboarding,
         'joinedAt': user.joinedAt?.toIso8601String(),
         'updatedAt': DateTime.now().toIso8601String(),
       }, SetOptions(merge: true));
     } catch (e) {
       print('Error saving user to Firestore: $e');
+      rethrow;
+    }
+  }
+
+  /// Update specific fields in user document.
+  Future<void> updateUserFields(String deviceId, Map<String, dynamic> fields) async {
+    try {
+      fields['updatedAt'] = DateTime.now().toIso8601String();
+      await _firestore.collection(_collection).doc(deviceId).update(fields);
+    } catch (e) {
+      print('Error updating user fields: $e');
       rethrow;
     }
   }
@@ -50,6 +68,8 @@ class UserFirestoreService {
 
       return UserModel(
         name: data['name'] as String?,
+        gender: data['gender'] as String?,
+        profileImageUrl: data['profileImageUrl'] as String?,
         birthDate: data['birthDate'] as String?,
         birthTime: data['birthTime'] as String?,
         birthLatitude: (data['birthLatitude'] as num?)?.toDouble(),
@@ -58,6 +78,11 @@ class UserFirestoreService {
         birthCity: data['birthCity'] as String?,
         sunSign: data['sunSign'] as String?,
         risingSign: data['risingSign'] as String?,
+        moonSign: data['moonSign'] as String?,
+        relationshipStatus: data['relationshipStatus'] as String?,
+        intentions: (data['intentions'] as List<dynamic>?)?.cast<String>(),
+        knowledgeLevel: data['knowledgeLevel'] as String?,
+        preferredTone: data['preferredTone'] as String?,
         hasCompletedOnboarding: data['hasCompletedOnboarding'] as bool? ?? false,
         joinedAt: data['joinedAt'] != null
             ? DateTime.tryParse(data['joinedAt'] as String)

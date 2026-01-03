@@ -236,6 +236,56 @@ class TarotApiService {
     }
   }
 
+  /// Fetches the daily tarot card reading for a user.
+  ///
+  /// This is a "Card of the Day" feature:
+  /// - If the user already drew today's card, returns the cached reading
+  /// - Otherwise, draws a new random card and generates interpretation
+  ///
+  /// [deviceId] - The user's device identifier.
+  /// [characterId] - The Oracle character (default: 'madame_luna').
+  ///
+  /// Returns a map with the daily reading data.
+  /// Throws [TarotApiException] if the request fails.
+  Future<Map<String, dynamic>> getDailyTarot({
+    required String deviceId,
+    String characterId = 'madame_luna',
+  }) async {
+    try {
+      final response = await _dio.get(
+        '/tarot/daily',
+        queryParameters: {
+          'device_id': deviceId,
+          'character_id': characterId,
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final data = response.data as Map<String, dynamic>;
+        if (data['success'] == true) {
+          return data;
+        } else {
+          throw TarotApiException(
+            message: data['error'] as String? ?? 'Could not get daily card',
+          );
+        }
+      } else {
+        throw TarotApiException(
+          message: 'Could not get daily card: ${response.statusCode}',
+          statusCode: response.statusCode,
+        );
+      }
+    } on DioException catch (e) {
+      throw _handleDioError(e);
+    } catch (e) {
+      if (e is TarotApiException) rethrow;
+      throw TarotApiException(
+        message: 'Error getting daily card: $e',
+        originalError: e,
+      );
+    }
+  }
+
   /// Sends a message to the Oracle and receives a response.
   ///
   /// [chatId] - The unique chat session ID.
@@ -286,6 +336,10 @@ class TarotApiService {
       );
     }
   }
+
+  // NOTE: Personal horoscope and Astro-Guide chat methods have been moved to
+  // AstrologyApiService in lib/features/sky_hall/data/services/astrology_api_service.dart
+  // for better separation of concerns.
 
   /// Converts DioException to TarotApiException with user-friendly messages.
   TarotApiException _handleDioError(DioException e) {
