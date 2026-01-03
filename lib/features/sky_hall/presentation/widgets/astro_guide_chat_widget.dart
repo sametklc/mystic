@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:intl/intl.dart';
 
 import '../../../../core/constants/constants.dart';
 import '../../../../core/services/device_id_service.dart';
@@ -15,11 +14,10 @@ import '../../data/services/astrology_api_service.dart';
 /// Astro Guide Chat widget for the Sky Hall Guide tab.
 /// Allows users to chat with an AI that interprets their natal chart.
 ///
-/// Uses Firestore persistence with "infinite memory" via backend summarization:
-/// - Full message history stored in Firestore
-/// - Nova remembers context via rolling summaries (token-efficient)
-/// - Real-time sync via Firestore streams
-/// - Persists across app restarts
+/// Uses Firestore real-time listeners for guaranteed message persistence:
+/// - Messages are displayed via StreamBuilder (real-time sync)
+/// - Backend handles saving messages and AI responses
+/// - Messages persist across app restarts
 ///
 /// Firestore Schema:
 ///   users/{user_id}/astro_guide/metadata - Summary and chart context
@@ -37,9 +35,7 @@ class _AstroGuideChatWidgetState extends ConsumerState<AstroGuideChatWidget> {
   final FocusNode _focusNode = FocusNode();
   final ScrollController _scrollController = ScrollController();
 
-  final List<_AstroChatMessage> _messages = [];
   bool _isLoading = false;
-  bool _isLoadingHistory = true;
   String? _sessionId;
 
   final AstrologyApiService _apiService = AstrologyApiService();
@@ -58,56 +54,41 @@ class _AstroGuideChatWidgetState extends ConsumerState<AstroGuideChatWidget> {
     super.dispose();
   }
 
-  /// Initialize chat session and load history
-  Future<void> _initSession() async {
+  /// Initialize chat session
+  void _initSession() {
     final deviceId = ref.read(deviceIdProvider);
     _sessionId = 'session_$deviceId';
-
-    // Load existing chat history from backend
-    await _loadChatHistory();
-
-    // Add welcome message only if no history exists
-    if (_messages.isEmpty) {
-      _addWelcomeMessage();
-    }
-
-    setState(() => _isLoadingHistory = false);
-
-    // Scroll to bottom after history loads
-    WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
   }
 
-  /// Load chat history from Firestore via API
-  Future<void> _loadChatHistory() async {
+  /// Get the Firestore stream for chat messages
+  Stream<List<_AstroChatMessage>> _getChatStream() {
     final deviceId = ref.read(deviceIdProvider);
 
-    try {
-      final history = await _apiService.getChatHistory(userId: deviceId);
-      final messages = history['messages'] as List<dynamic>? ?? [];
-
-      if (messages.isNotEmpty) {
-        setState(() {
-          _messages.clear();
-          for (final msg in messages) {
-            _messages.add(_AstroChatMessage(
-              id: msg['id'] as String?,
-              text: msg['content'] as String? ?? '',
-              isUser: msg['role'] == 'user',
-              timestamp: _parseTimestamp(msg['timestamp']),
-            ));
-          }
-        });
-        debugPrint('[AstroChat] Loaded ${messages.length} messages from history');
-      }
-    } catch (e) {
-      debugPrint('[AstroChat] Failed to load history: $e');
-      // Continue without history - will show welcome message
-    }
+    return FirebaseFirestore.instance
+        .collection('users')
+        .doc(deviceId)
+        .collection('astro_guide')
+        .doc('metadata')
+        .collection('messages')
+        .orderBy('timestamp', descending: false) // Oldest first for chat display
+        .snapshots()
+        .map((snapshot) {
+      return snapshot.docs.map((doc) {
+        final data = doc.data();
+        return _AstroChatMessage(
+          id: doc.id,
+          text: data['content'] as String? ?? '',
+          isUser: data['role'] == 'user',
+          timestamp: _parseTimestamp(data['timestamp']),
+        );
+      }).toList();
+    });
   }
 
-  /// Parse timestamp from various formats
+  /// Parse timestamp from Firestore
   DateTime _parseTimestamp(dynamic timestamp) {
     if (timestamp == null) return DateTime.now();
+    if (timestamp is Timestamp) return timestamp.toDate();
     if (timestamp is DateTime) return timestamp;
     if (timestamp is String) {
       try {
@@ -117,23 +98,6 @@ class _AstroGuideChatWidgetState extends ConsumerState<AstroGuideChatWidget> {
       }
     }
     return DateTime.now();
-  }
-
-  void _addWelcomeMessage() {
-    final user = ref.read(userProvider);
-    final sunSign = user.sunSign ?? 'cosmic traveler';
-    final character = ref.read(selectedCharacterProvider);
-
-    // Generate welcome message based on selected character
-    final welcomeText = _getCharacterWelcome(character.id, character.name, sunSign);
-
-    _messages.add(_AstroChatMessage(
-      text: welcomeText,
-      isUser: false,
-      timestamp: DateTime.now(),
-    ));
-
-    if (mounted) setState(() {});
   }
 
   /// Get character-specific welcome message
@@ -164,44 +128,33 @@ class _AstroGuideChatWidgetState extends ConsumerState<AstroGuideChatWidget> {
 
   void _scrollToBottom() {
     if (_scrollController.hasClients) {
-      _scrollController.animateTo(
-        _scrollController.position.maxScrollExtent,
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeOut,
-      );
+      Future.delayed(const Duration(milliseconds: 100), () {
+        if (_scrollController.hasClients) {
+          _scrollController.animateTo(
+            _scrollController.position.maxScrollExtent,
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeOut,
+          );
+        }
+      });
     }
   }
 
-  /// Start a new conversation (clear history and get new session)
+  /// Start a new conversation (clear history)
   Future<void> _startNewConversation() async {
     final deviceId = ref.read(deviceIdProvider);
 
-    setState(() {
-      _messages.clear();
-      _isLoading = true;
-    });
+    setState(() => _isLoading = true);
 
-    // Clear history and get new session from backend
-    // This clears all Firestore messages and resets the summary
-    _sessionId = await _apiService.startNewChatSession(userId: deviceId);
-
-    // Add welcome message
-    _addWelcomeMessage();
+    try {
+      // Clear history via API - this deletes Firestore messages
+      _sessionId = await _apiService.startNewChatSession(userId: deviceId);
+    } catch (e) {
+      debugPrint('[AstroChat] Failed to start new conversation: $e');
+    }
 
     setState(() => _isLoading = false);
-
     HapticFeedback.mediumImpact();
-  }
-
-  /// Refresh chat history from server
-  Future<void> _refreshHistory() async {
-    setState(() => _isLoadingHistory = true);
-    await _loadChatHistory();
-    if (_messages.isEmpty) {
-      _addWelcomeMessage();
-    }
-    setState(() => _isLoadingHistory = false);
-    WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
   }
 
   Future<void> _sendMessage() async {
@@ -213,36 +166,22 @@ class _AstroGuideChatWidgetState extends ConsumerState<AstroGuideChatWidget> {
     _messageController.clear();
     _focusNode.unfocus();
 
-    // Add user message
-    setState(() {
-      _messages.add(_AstroChatMessage(
-        text: message,
-        isUser: true,
-        timestamp: DateTime.now(),
-      ));
-      _isLoading = true;
-    });
-
-    WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
+    setState(() => _isLoading = true);
 
     // Get user data for API call
     final user = ref.read(userProvider);
     final deviceId = ref.read(deviceIdProvider);
 
-    String response;
-
     // Try to use backend API if user has birth data
     if (user.birthDate != null && user.birthLatitude != null) {
       try {
-        // Birth date is already in YYYY-MM-DD format
         final birthDate = user.birthDate!;
-
-        // Get selected guide character
         final selectedCharacterId = ref.read(selectedCharacterIdProvider);
 
-        // Call the Astro-Guide chat API with session-based memory
-        // No need to send conversation history - backend maintains summary
-        final result = await _apiService.sendAstroGuideChat(
+        // Call the Astro-Guide chat API
+        // Backend saves both user message and AI response to Firestore
+        // StreamBuilder will automatically update the UI
+        await _apiService.sendAstroGuideChat(
           userId: deviceId,
           sessionId: _sessionId!,
           message: message,
@@ -255,81 +194,33 @@ class _AstroGuideChatWidgetState extends ConsumerState<AstroGuideChatWidget> {
           characterId: selectedCharacterId,
         );
 
-        response = result['response'] as String? ??
-            _generateFallbackResponse(message, user.sunSign, user.risingSign);
-
-        // Update session_id if returned (for continuity)
-        if (result['session_id'] != null) {
-          _sessionId = result['session_id'] as String;
-        }
+        // Scroll to bottom after new messages arrive
+        _scrollToBottom();
       } catch (e) {
-        debugPrint('Astro chat API error: $e');
-        response = _generateFallbackResponse(message, user.sunSign, user.risingSign);
+        debugPrint('[AstroChat] API error: $e');
+        // Show error to user
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Failed to send message. Please try again.'),
+              backgroundColor: AppColors.error,
+            ),
+          );
+        }
       }
     } else {
-      // No birth data - use fallback responses
-      response = _generateFallbackResponse(message, user.sunSign, user.risingSign);
+      // No birth data - show error
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Please complete your birth data first.'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
     }
 
-    setState(() {
-      _messages.add(_AstroChatMessage(
-        text: response,
-        isUser: false,
-        timestamp: DateTime.now(),
-      ));
-      _isLoading = false;
-    });
-
-    WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
-  }
-
-  String _generateFallbackResponse(String question, String? sunSign, String? risingSign) {
-    final sun = sunSign ?? 'your sign';
-    final rising = risingSign ?? 'your rising';
-
-    // Simple keyword-based responses
-    final lowerQuestion = question.toLowerCase();
-
-    if (lowerQuestion.contains('sun') || lowerQuestion.contains('identity')) {
-      return 'Your Sun in $sun reveals your core essence and life purpose. '
-          'This placement illuminates how you express your authentic self and where '
-          'you find vitality. The Sun\'s aspects in your chart show how easily '
-          'this expression flows in your life.';
-    }
-
-    if (lowerQuestion.contains('rising') || lowerQuestion.contains('ascendant')) {
-      return 'With $rising rising, you project an aura of its qualities to the world. '
-          'This is your cosmic mask - the first impression you make. '
-          'Understanding your Ascendant helps you navigate social situations '
-          'and recognize how others perceive you.';
-    }
-
-    if (lowerQuestion.contains('love') || lowerQuestion.contains('relationship')) {
-      return 'For matters of the heart, I look to Venus in your chart. '
-          'As a $sun, you approach love with characteristic traits of your sign. '
-          'Your 7th house of partnerships and its ruler reveal deeper patterns '
-          'in how you form lasting bonds.';
-    }
-
-    if (lowerQuestion.contains('career') || lowerQuestion.contains('work')) {
-      return 'Your 10th house and its planetary ruler speak to your career path. '
-          'As a $sun, you bring unique qualities to your professional life. '
-          'Saturn\'s placement shows where you face challenges that ultimately '
-          'forge your greatest achievements.';
-    }
-
-    if (lowerQuestion.contains('moon') || lowerQuestion.contains('emotion')) {
-      return 'Your Moon placement reveals your emotional landscape and innermost needs. '
-          'This is how you nurture yourself and others, and what makes you feel secure. '
-          'The Moon\'s aspects show how your emotions flow with other areas of life.';
-    }
-
-    // Default response
-    return 'Looking at your chart as a $sun with $rising rising, '
-        'I see fascinating cosmic patterns at play. Your planetary placements '
-        'form a unique celestial blueprint. Would you like me to explore '
-        'a specific area - perhaps your love nature, career potential, '
-        'or spiritual path?';
+    setState(() => _isLoading = false);
   }
 
   @override
@@ -342,7 +233,7 @@ class _AstroGuideChatWidgetState extends ConsumerState<AstroGuideChatWidget> {
 
     return Column(
       children: [
-        // Chat Messages
+        // Chat Messages with StreamBuilder
         Expanded(
           child: Stack(
             children: [
@@ -353,45 +244,95 @@ class _AstroGuideChatWidgetState extends ConsumerState<AstroGuideChatWidget> {
                 ),
               ),
 
-              // Loading history state
-              if (_isLoadingHistory)
-                Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      SizedBox(
-                        width: 32,
-                        height: 32,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          valueColor: AlwaysStoppedAnimation<Color>(
-                            AppColors.mysticTeal,
+              // Messages list with Firestore Stream
+              StreamBuilder<List<_AstroChatMessage>>(
+                stream: _getChatStream(),
+                builder: (context, snapshot) {
+                  // Loading state
+                  if (snapshot.connectionState == ConnectionState.waiting &&
+                      !snapshot.hasData) {
+                    return Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          SizedBox(
+                            width: 32,
+                            height: 32,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                AppColors.mysticTeal,
+                              ),
+                            ),
                           ),
-                        ),
+                          const SizedBox(height: 16),
+                          Text(
+                            'Loading cosmic memory...',
+                            style: AppTypography.bodySmall.copyWith(
+                              color: AppColors.textSecondary,
+                            ),
+                          ),
+                        ],
                       ),
-                      const SizedBox(height: 16),
-                      Text(
-                        'Loading cosmic memory...',
-                        style: AppTypography.bodySmall.copyWith(
-                          color: AppColors.textSecondary,
-                        ),
+                    );
+                  }
+
+                  // Error state
+                  if (snapshot.hasError) {
+                    debugPrint('[AstroChat] Stream error: ${snapshot.error}');
+                    return Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.cloud_off,
+                            size: 48,
+                            color: AppColors.textTertiary,
+                          ),
+                          const SizedBox(height: 16),
+                          Text(
+                            'Connection issue',
+                            style: AppTypography.titleSmall.copyWith(
+                              color: AppColors.textSecondary,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            'Please check your internet connection',
+                            style: AppTypography.bodySmall.copyWith(
+                              color: AppColors.textTertiary,
+                            ),
+                          ),
+                        ],
                       ),
-                    ],
-                  ),
-                )
-              else
-                // Messages list
-                ListView.builder(
-                  controller: _scrollController,
-                  padding: const EdgeInsets.all(AppConstants.spacingMedium),
-                  itemCount: _messages.length + (_isLoading ? 1 : 0),
-                  itemBuilder: (context, index) {
-                    if (_isLoading && index == _messages.length) {
-                      return _buildTypingIndicator();
-                    }
-                    return _buildMessageBubble(_messages[index], index);
-                  },
-                ),
+                    );
+                  }
+
+                  final messages = snapshot.data ?? [];
+
+                  // Empty state - show welcome message
+                  if (messages.isEmpty) {
+                    return _buildWelcomeState();
+                  }
+
+                  // Scroll to bottom when messages change
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    _scrollToBottom();
+                  });
+
+                  return ListView.builder(
+                    controller: _scrollController,
+                    padding: const EdgeInsets.all(AppConstants.spacingMedium),
+                    itemCount: messages.length + (_isLoading ? 1 : 0),
+                    itemBuilder: (context, index) {
+                      if (_isLoading && index == messages.length) {
+                        return _buildTypingIndicator();
+                      }
+                      return _buildMessageBubble(messages[index], index);
+                    },
+                  );
+                },
+              ),
             ],
           ),
         ),
@@ -400,6 +341,97 @@ class _AstroGuideChatWidgetState extends ConsumerState<AstroGuideChatWidget> {
         _buildInputArea(),
       ],
     );
+  }
+
+  Widget _buildWelcomeState() {
+    final user = ref.read(userProvider);
+    final sunSign = user.sunSign ?? 'cosmic traveler';
+    final character = ref.read(selectedCharacterProvider);
+    final welcomeText = _getCharacterWelcome(character.id, character.name, sunSign);
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(AppConstants.spacingLarge),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const SizedBox(height: 40),
+
+          // Character avatar
+          Container(
+            width: 80,
+            height: 80,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  AppColors.mysticTeal.withOpacity(0.3),
+                  AppColors.primary.withOpacity(0.3),
+                ],
+              ),
+              border: Border.all(
+                color: AppColors.mysticTeal.withOpacity(0.5),
+                width: 2,
+              ),
+            ),
+            child: Icon(
+              Icons.auto_awesome,
+              size: 36,
+              color: AppColors.mysticTeal,
+            ),
+          ),
+
+          const SizedBox(height: AppConstants.spacingMedium),
+
+          Text(
+            character.name,
+            style: AppTypography.titleMedium.copyWith(
+              color: AppColors.mysticTeal,
+            ),
+          ),
+
+          const SizedBox(height: AppConstants.spacingLarge),
+
+          // Welcome message bubble
+          Container(
+            padding: const EdgeInsets.all(AppConstants.spacingMedium),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(AppConstants.borderRadiusMedium),
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  AppColors.mysticTeal.withOpacity(0.15),
+                  AppColors.glassFill,
+                ],
+              ),
+              border: Border.all(
+                color: AppColors.mysticTeal.withOpacity(0.3),
+              ),
+            ),
+            child: Text(
+              welcomeText,
+              style: AppTypography.bodyMedium.copyWith(
+                color: AppColors.textPrimary,
+                height: 1.6,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ),
+
+          const SizedBox(height: AppConstants.spacingLarge),
+
+          Text(
+            'Ask me anything about your chart...',
+            style: AppTypography.bodySmall.copyWith(
+              color: AppColors.textTertiary,
+              fontStyle: FontStyle.italic,
+            ),
+          ),
+        ],
+      ),
+    ).animate().fadeIn(duration: 400.ms);
   }
 
   Widget _buildMessageBubble(_AstroChatMessage message, int index) {
@@ -484,7 +516,7 @@ class _AstroGuideChatWidgetState extends ConsumerState<AstroGuideChatWidget> {
           ),
         ),
       ),
-    ).animate().fadeIn(duration: 300.ms).slideY(begin: 0.1, end: 0);
+    ).animate().fadeIn(duration: 200.ms).slideY(begin: 0.05, end: 0);
   }
 
   Widget _buildTypingIndicator() {
@@ -591,8 +623,9 @@ class _AstroGuideChatWidgetState extends ConsumerState<AstroGuideChatWidget> {
 
           // Send Button
           GestureDetector(
-            onTap: _sendMessage,
-            child: Container(
+            onTap: _isLoading ? null : _sendMessage,
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
               width: 44,
               height: 44,
               decoration: BoxDecoration(
@@ -600,24 +633,39 @@ class _AstroGuideChatWidgetState extends ConsumerState<AstroGuideChatWidget> {
                 gradient: LinearGradient(
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
-                  colors: [
-                    AppColors.mysticTeal,
-                    AppColors.primary,
-                  ],
+                  colors: _isLoading
+                      ? [
+                          AppColors.textTertiary,
+                          AppColors.textTertiary,
+                        ]
+                      : [
+                          AppColors.mysticTeal,
+                          AppColors.primary,
+                        ],
                 ),
-                boxShadow: [
-                  BoxShadow(
-                    color: AppColors.mysticTeal.withOpacity(0.3),
-                    blurRadius: 8,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
+                boxShadow: _isLoading
+                    ? []
+                    : [
+                        BoxShadow(
+                          color: AppColors.mysticTeal.withOpacity(0.3),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
               ),
-              child: const Icon(
-                Icons.send_rounded,
-                color: Colors.white,
-                size: 20,
-              ),
+              child: _isLoading
+                  ? Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                      ),
+                    )
+                  : const Icon(
+                      Icons.send_rounded,
+                      color: Colors.white,
+                      size: 20,
+                    ),
             ),
           ),
         ],
@@ -659,9 +707,9 @@ class _AstroGuideChatWidgetState extends ConsumerState<AstroGuideChatWidget> {
   }
 }
 
-/// Message model for astro chat with Firestore persistence
+/// Message model for astro chat
 class _AstroChatMessage {
-  final String? id; // Firestore document ID
+  final String? id;
   final String text;
   final bool isUser;
   final DateTime timestamp;
