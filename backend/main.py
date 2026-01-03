@@ -42,11 +42,16 @@ def get_firebase_credentials():
         return credentials.Certificate(cred_path)
 
     # For production: use environment variable with JSON string
-    cred_json = os.getenv("FIREBASE_CREDENTIALS_JSON")
+    # Check multiple possible env var names
+    cred_json = os.getenv("FIREBASE_CREDENTIALS_JSON") or os.getenv("FIREBASE_CREDENTIALS")
     if cred_json:
         import json
-        cred_dict = json.loads(cred_json)
-        return credentials.Certificate(cred_dict)
+        try:
+            cred_dict = json.loads(cred_json)
+            return credentials.Certificate(cred_dict)
+        except json.JSONDecodeError as e:
+            print(f"[Firebase] Failed to parse credentials JSON: {e}")
+            return None
 
     return None
 
