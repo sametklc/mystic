@@ -1018,6 +1018,7 @@ class AstroGuideChatRequest(BaseModel):
     birth_longitude: float = Field(..., description="Birth location longitude")
     birth_timezone: str = Field(default="UTC", description="Birth location timezone")
     name: Optional[str] = Field(default=None, description="User's name")
+    character_id: Optional[str] = Field(default="nova", description="Guide character ID (madame_luna, elder_weiss, nova, shadow)")
 
 
 class AstroGuideChatResponse(BaseModel):
@@ -1096,7 +1097,7 @@ async def astro_guide_chat(
             transits_context += f"- {t['transiting_planet']} {t['aspect']} natal {t['natal_planet']}: {t['interpretation']}\n"
         transits_context += f"\nOverall energy today: {transits['overall_energy']}"
 
-        # Step 3: Generate response using AstroChatService
+        # Step 3: Generate response using AstroChatService with selected character
         chat_service = get_astro_chat_service()
         result = await chat_service.generate_response(
             user_id=request.user_id,
@@ -1104,6 +1105,7 @@ async def astro_guide_chat(
             natal_chart_context=natal_chart_context,
             transits_context=transits_context,
             user_name=request.name or "Seeker",
+            character_id=request.character_id or "nova",
         )
 
         # Step 4: Trigger background summarization if needed (Every 5 Messages Rule)

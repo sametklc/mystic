@@ -327,15 +327,17 @@ class AstroChatService:
         current_summary: str,
         recent_messages: List[Dict],
         transits_context: str = "",
+        character_id: str = "nova",
     ) -> str:
         """
-        Build the system prompt for Nova with all context.
+        Build the system prompt for the selected guide character.
 
         Args:
             natal_chart_context: User's cached chart data
             current_summary: Rolling conversation summary
             recent_messages: Last N messages for immediate context
             transits_context: Current transits affecting the user
+            character_id: Guide character ID (madame_luna, elder_weiss, nova, shadow)
 
         Returns:
             Complete system prompt string
@@ -371,37 +373,107 @@ CONVERSATION MEMORY (Summary of all previous discussions):
         # Build recent context section
         recent_section = ""
         if recent_messages:
+            character_name = self._get_character_name(character_id)
             recent_section = "\n\nRECENT MESSAGES:"
             for msg in recent_messages:
-                role_label = "User" if msg["role"] == "user" else "Nova"
+                role_label = "User" if msg["role"] == "user" else character_name
                 content_preview = msg["content"][:200] + "..." if len(msg["content"]) > 200 else msg["content"]
                 recent_section += f"\n{role_label}: {content_preview}"
 
+        # Get character-specific persona
+        persona = self._get_character_persona(character_id, venus, moon)
+
         # Complete system prompt
-        system_prompt = f"""You are Nova, a cosmic oracle and astro-guide from a distant future where technology and mysticism have merged.
+        system_prompt = f"""{persona}
 
 {chart_section}
 {memory_section}
 {recent_section}
 
-SPEAKING STYLE:
-- Blend technological and mystical language naturally
-- Reference the user's specific chart placements when relevant
-- Be analytical yet deeply intuitive
-- Use phrases like "your cosmic signature shows...", "analyzing your {venus} Venus..."
-- Keep responses concise (2-4 sentences) but meaningful
-- Always connect insights to their actual chart data
-- Be warm and helpful, not cold or robotic
-- Remember what was discussed before (see CONVERSATION MEMORY)
-- Reference specific placements when relevant
-
 IMPORTANT:
 - Answer their specific question using their chart as context
 - If they refer to something from earlier in the conversation, acknowledge it
 - Don't just give textbook meanings - personalize to THEIR chart
-- You have access to the full conversation history through your memory"""
+- You have access to the full conversation history through your memory
+- Keep responses concise (2-4 sentences) but meaningful"""
 
         return system_prompt
+
+    def _get_character_name(self, character_id: str) -> str:
+        """Get the display name for a character."""
+        names = {
+            "madame_luna": "Luna",
+            "elder_weiss": "Elder",
+            "nova": "Nova",
+            "shadow": "Shadow",
+        }
+        return names.get(character_id, "Guide")
+
+    def _get_character_persona(self, character_id: str, venus_sign: str, moon_sign: str) -> str:
+        """Get character-specific persona for system prompt."""
+
+        if character_id == "madame_luna":
+            return f"""You are Luna, a warm and intuitive astrologer who channels the energy of the moon.
+
+PERSONALITY:
+- Deeply empathetic and nurturing in your readings
+- Focus on matters of the heart, emotions, and relationships
+- Your tone is gentle, motherly, and comforting
+- You speak with poetic, flowing language
+- You often reference the moon's influence
+
+SPEAKING STYLE:
+- Use phrases like "dear one...", "the moon whispers to me...", "your heart knows..."
+- Reference their Moon in {moon_sign} and Venus in {venus_sign} frequently
+- Be warm and supportive, never harsh
+- Offer emotional insights and relationship guidance"""
+
+        elif character_id == "elder_weiss":
+            return f"""You are Elder, an ancient sage who has witnessed countless stars rise and fall over centuries.
+
+PERSONALITY:
+- Wise, patient, and philosophical
+- Focus on life path, career, and long-term destiny
+- Your tone is measured, thoughtful, and profound
+- You speak with the weight of ages behind your words
+- You often share ancient wisdom and proverbs
+
+SPEAKING STYLE:
+- Use phrases like "in my centuries of observation...", "the old ways teach us...", "patience reveals..."
+- Reference their Sun sign's life purpose and Saturn's lessons
+- Provide strategic, long-term guidance
+- Be supportive but encourage growth through discipline"""
+
+        elif character_id == "shadow":
+            return f"""You are Shadow, a brutally honest oracle who reveals uncomfortable truths.
+
+PERSONALITY:
+- Direct, unflinching, and provocative
+- You expose hidden obstacles and self-deceptions
+- Your tone is sharp, challenging, but ultimately helpful
+- You don't sugarcoat - you deliver hard truths
+- You push people out of their comfort zones
+
+SPEAKING STYLE:
+- Use phrases like "let's cut through the illusion...", "here's what you're not seeing...", "the truth is..."
+- Point out challenging aspects in their chart
+- Challenge their assumptions and blind spots
+- Be tough but fair - your goal is their growth, not cruelty"""
+
+        else:  # nova (default)
+            return f"""You are Nova, a cosmic oracle from a distant future where technology and mysticism have merged.
+
+PERSONALITY:
+- Analytical yet deeply intuitive
+- You blend data-driven insights with spiritual wisdom
+- Your tone is precise, futuristic, and slightly mysterious
+- You speak as if scanning cosmic patterns with advanced technology
+
+SPEAKING STYLE:
+- Use phrases like "scanning your cosmic signature...", "data indicates...", "your celestial matrix shows..."
+- Reference specific planetary placements with precision
+- Blend technological and mystical language naturally
+- Be helpful and insightful while maintaining an air of cosmic mystery"""
 
     # =========================================================================
     # Response Generation
@@ -414,18 +486,27 @@ IMPORTANT:
         natal_chart_context: Dict,
         transits_context: str = "",
         user_name: str = "Seeker",
+        character_id: str = "nova",
     ) -> Dict[str, Any]:
         """
-        Generate a response from Nova with full context.
+        Generate a response from the selected guide character.
 
         This is the main entry point for chat - handles:
         1. Fetching context (summary + recent messages)
-        2. Building prompt
+        2. Building prompt with character-specific persona
         3. Generating response
         4. Saving messages
         5. Incrementing counters
 
         Background summarization should be triggered separately.
+
+        Args:
+            user_id: User's unique identifier
+            message: User's question
+            natal_chart_context: User's cached chart data
+            transits_context: Current transits affecting the user
+            user_name: User's name for personalization
+            character_id: Guide character (madame_luna, elder_weiss, nova, shadow)
 
         Returns:
             Dict with response, should_summarize flag, and metadata
@@ -438,6 +519,7 @@ IMPORTANT:
                     natal_chart_context.get("sun_sign"),
                     natal_chart_context.get("moon_sign"),
                     natal_chart_context.get("rising_sign"),
+                    character_id,
                 ),
                 "should_summarize": False,
             }
@@ -449,12 +531,13 @@ IMPORTANT:
         # Step 2: Get recent messages
         recent_messages = self.get_recent_messages(user_id)
 
-        # Step 3: Build system prompt
+        # Step 3: Build system prompt with selected character
         system_prompt = self.build_system_prompt(
             natal_chart_context=natal_chart_context,
             current_summary=current_summary,
             recent_messages=recent_messages,
             transits_context=transits_context,
+            character_id=character_id,
         )
 
         # Step 4: Prepare messages for API
@@ -687,37 +770,58 @@ SUMMARY:"""
         sun_sign: str,
         moon_sign: str,
         rising_sign: str,
+        character_id: str = "nova",
     ) -> str:
-        """Generate fallback response when OpenAI is unavailable."""
+        """Generate fallback response when OpenAI is unavailable, matching character style."""
         import random
 
         sun = sun_sign or "your sign"
         moon = moon_sign or "your Moon sign"
         rising = rising_sign or "your Rising"
+        character_name = self._get_character_name(character_id)
 
         lower_msg = message.lower()
 
-        if "sun" in lower_msg or "identity" in lower_msg:
-            return f"Your Sun in {sun} reveals your core essence and life purpose. This placement illuminates how you express your authentic self and where you find vitality."
+        # Character-specific response templates
+        if character_id == "madame_luna":
+            if "love" in lower_msg or "relationship" in lower_msg:
+                return f"Dear one, your Moon in {moon} speaks of deep emotional currents in love. The heart knows what it needs..."
+            if "moon" in lower_msg or "emotion" in lower_msg:
+                return f"The moon whispers to me about your {moon} Moon... Such rich emotional depths you carry within."
+            responses = [
+                f"Dear {sun}, I sense the moon's energy flowing through you. What weighs on your heart today?",
+                f"Your {moon} Moon tells me of your inner world... The heart has questions, doesn't it?",
+            ]
 
-        if "rising" in lower_msg or "ascendant" in lower_msg:
-            return f"With {rising} rising, you project an aura of its qualities to the world. This is your cosmic mask - the first impression you make."
+        elif character_id == "elder_weiss":
+            if "career" in lower_msg or "work" in lower_msg:
+                return f"In my centuries of observation, I've seen many {sun} souls find their path. Patience reveals purpose."
+            if "sun" in lower_msg or "identity" in lower_msg:
+                return f"The old ways teach us that your {sun} Sun illuminates your destiny. What calling do you sense?"
+            responses = [
+                f"Young {sun}, the stars have marked a path for you. What wisdom do you seek from the ages?",
+                f"In all my years, {sun} souls like yourself have shown remarkable potential. What guidance shall I offer?",
+            ]
 
-        if "love" in lower_msg or "relationship" in lower_msg:
-            return f"For matters of the heart, I look to Venus in your chart. As a {sun}, you approach love with characteristic traits of your sign."
+        elif character_id == "shadow":
+            if "love" in lower_msg or "relationship" in lower_msg:
+                return f"Let's cut through the illusion, {sun}. Your Venus patterns show what you're really looking for in love..."
+            if "career" in lower_msg or "work" in lower_msg:
+                return f"Here's what you're not seeing about your career, {sun}: the 10th house never lies about ambition."
+            responses = [
+                f"So, a {sun} seeks the truth. Let's see what you're really avoiding in that chart of yours.",
+                f"The truth is, {sun}, your {rising} rising is a mask. What's really behind it?",
+            ]
 
-        if "career" in lower_msg or "work" in lower_msg:
-            return f"Your 10th house and its planetary ruler speak to your career path. As a {sun}, you bring unique qualities to your professional life."
-
-        if "moon" in lower_msg or "emotion" in lower_msg:
-            return f"Your Moon in {moon} reveals your emotional landscape and innermost needs. This is how you nurture yourself and others."
-
-        # Default responses
-        responses = [
-            f"Looking at your chart as a {sun} with {rising} rising, I see fascinating cosmic patterns at play. What aspect would you like to explore?",
-            f"Your cosmic signature as a {sun} Sun, {moon} Moon creates a unique energetic blend. What wisdom do you seek from the stars?",
-            f"Scanning your energy field, {sun}... Your chart reveals complex planetary forces. What draws your curiosity today?",
-        ]
+        else:  # nova (default)
+            if "sun" in lower_msg or "identity" in lower_msg:
+                return f"Scanning cosmic signature... Your Sun in {sun} reveals your core essence. Data indicates strong life purpose alignment."
+            if "rising" in lower_msg or "ascendant" in lower_msg:
+                return f"Analyzing {rising} Rising... This is your cosmic interface with the world. First impressions detected."
+            responses = [
+                f"Scanning your energy field, {sun}... Your celestial matrix reveals complex planetary forces. What shall we analyze?",
+                f"Data indicates a unique {sun} Sun, {moon} Moon configuration. What aspect of your cosmic blueprint interests you?",
+            ]
 
         return random.choice(responses)
 
