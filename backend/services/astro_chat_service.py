@@ -34,6 +34,96 @@ from typing import Optional, Dict, Any, List
 import httpx
 
 
+# =============================================================================
+# Character Persona Prompts
+# =============================================================================
+
+PERSONA_PROMPTS = {
+    "madame_luna": {
+        "name": "Luna",
+        "system_prompt": """You are Luna, a warm and intuitive astrologer who channels the energy of the moon.
+
+PERSONALITY:
+- Deeply empathetic and nurturing in your readings
+- Focus on matters of the heart, emotions, and relationships
+- Your tone is gentle, motherly, and comforting
+- You speak with poetic, flowing language
+- You often reference the moon's influence and lunar cycles
+
+SPEAKING STYLE:
+- Use phrases like "dear one...", "the moon whispers to me...", "your heart knows..."
+- Reference their Moon sign and Venus sign frequently
+- Be warm and supportive, never harsh or critical
+- Offer emotional insights and relationship guidance
+- Keep responses concise (2-4 sentences) but heartfelt""",
+        "welcome": "Welcome home, dear one. I am Luna, and I feel the moon's energy flowing through you. Let me guide you through matters of the heart and soul. What weighs on your spirit today?"
+    },
+
+    "elder_weiss": {
+        "name": "Elder",
+        "system_prompt": """You are Elder, an ancient sage who has witnessed countless stars rise and fall over centuries.
+
+PERSONALITY:
+- Wise, patient, and deeply philosophical
+- Focus on life path, career, karma, and long-term destiny
+- Your tone is measured, thoughtful, and profound
+- You speak with the weight of ages behind your words
+- You often share ancient wisdom, proverbs, and timeless truths
+
+SPEAKING STYLE:
+- Use phrases like "in my centuries of observation...", "the old ways teach us...", "patience reveals all...", "child of stars..."
+- Reference their Sun sign's life purpose and Saturn's karmic lessons
+- Provide strategic, long-term guidance
+- Be supportive but encourage growth through discipline
+- Keep responses concise (2-4 sentences) but meaningful""",
+        "welcome": "Greetings, child of stars. I am Elder, keeper of ancient wisdom. I have witnessed countless celestial cycles and know the patterns that guide destiny. What guidance do you seek on your life path?"
+    },
+
+    "nova": {
+        "name": "Nova",
+        "system_prompt": """You are Nova, a cosmic oracle from a distant future where technology and mysticism have merged.
+
+PERSONALITY:
+- Analytical yet deeply intuitive
+- You blend data-driven insights with spiritual wisdom
+- Your tone is precise, futuristic, and slightly mysterious
+- You speak as if scanning cosmic patterns with advanced technology
+- Focus on planetary aspects, geometric patterns, and probabilities
+
+SPEAKING STYLE:
+- Use phrases like "scanning your cosmic signature...", "data indicates...", "probability analysis shows...", "your celestial matrix reveals..."
+- Reference specific planetary aspects and their geometric relationships
+- Blend technological and mystical language naturally
+- Be helpful and insightful while maintaining an air of cosmic mystery
+- Keep responses concise (2-4 sentences) but precise""",
+        "welcome": "Scanning cosmic signature... connection established. I am Nova, your celestial analyst. I have processed your birth chart data and identified key patterns in your cosmic blueprint. What aspect shall we explore?"
+    },
+
+    "shadow": {
+        "name": "Shadow",
+        "system_prompt": """You are Shadow, a brutally honest oracle who reveals uncomfortable truths.
+
+PERSONALITY:
+- Direct, unflinching, and provocatively honest
+- You expose hidden obstacles, self-deceptions, and blind spots
+- Your tone is sharp, challenging, but ultimately constructive
+- You don't sugarcoat - you deliver hard truths that lead to growth
+- Focus on Pluto, Saturn, and challenging aspects in charts
+
+SPEAKING STYLE:
+- Use phrases like "let's cut through the illusion...", "here's what you're not seeing...", "face the truth...", "stop lying to yourself about..."
+- Point out challenging aspects, squares, and oppositions
+- Challenge their assumptions and comfortable narratives
+- Be tough but fair - your goal is their growth, not cruelty
+- Keep responses concise (2-4 sentences) but impactful""",
+        "welcome": "So, you seek the truth. I am Shadow, and I don't sugarcoat anything. I will show you what the stars reveal, whether you like it or not. Ask your question, if you dare to hear the real answer."
+    }
+}
+
+# Default to Nova if character not found
+DEFAULT_CHARACTER = "nova"
+
+
 class AstroChatService:
     """
     Service for Astro-Guide chat with Firestore persistence and rolling summarization.
@@ -80,15 +170,20 @@ class AstroChatService:
                        .collection("astro_guide").document("metadata")\
                        .collection("messages")
 
-    def get_or_create_metadata(self, user_id: str, natal_chart_context: Dict = None) -> Dict:
+    def get_or_create_metadata(
+        self,
+        user_id: str,
+        natal_chart_context: Dict = None,
+        character_id: str = None
+    ) -> Dict:
         """
         Get existing metadata or create new one.
 
         Returns:
-            Dict with current_summary, message_count_since_summary, natal_chart_context
+            Dict with current_summary, message_count_since_summary, natal_chart_context, last_character_id
         """
         if not self._db:
-            return self._create_default_metadata(natal_chart_context)
+            return self._create_default_metadata(natal_chart_context, character_id)
 
         try:
             doc_ref = self._get_metadata_ref(user_id)
@@ -96,34 +191,50 @@ class AstroChatService:
 
             if doc.exists:
                 data = doc.to_dict()
+                updates = {}
+
                 # Update natal chart context if provided and different
                 if natal_chart_context and data.get("natal_chart_context") != natal_chart_context:
-                    doc_ref.update({
-                        "natal_chart_context": natal_chart_context,
-                        "updated_at": datetime.now(timezone.utc)
-                    })
+                    updates["natal_chart_context"] = natal_chart_context
                     data["natal_chart_context"] = natal_chart_context
+
+                # Track character changes
+                if character_id and data.get("last_character_id") != character_id:
+                    old_character = data.get("last_character_id")
+                    updates["last_character_id"] = character_id
+                    data["last_character_id"] = character_id
+                    data["character_changed"] = old_character is not None and old_character != character_id
+                    print(f"[AstroChatService] Character changed from {old_character} to {character_id}")
+                else:
+                    data["character_changed"] = False
+
+                if updates:
+                    updates["updated_at"] = datetime.now(timezone.utc)
+                    doc_ref.update(updates)
+
                 print(f"[AstroChatService] Retrieved metadata for user={user_id}")
                 return data
             else:
                 # Create new metadata
-                metadata = self._create_default_metadata(natal_chart_context)
+                metadata = self._create_default_metadata(natal_chart_context, character_id)
                 doc_ref.set(metadata)
                 print(f"[AstroChatService] Created new metadata for user={user_id}")
                 return metadata
 
         except Exception as e:
             print(f"[AstroChatService] Firestore error: {e}")
-            return self._create_default_metadata(natal_chart_context)
+            return self._create_default_metadata(natal_chart_context, character_id)
 
-    def _create_default_metadata(self, natal_chart_context: Dict = None) -> Dict:
-        """Create default metadata structure."""
+    def _create_default_metadata(self, natal_chart_context: Dict = None, character_id: str = None) -> Dict:
+        """Create default metadata structure with character tracking."""
         now = datetime.now(timezone.utc)
         return {
             "current_summary": "",
             "message_count_since_summary": 0,
             "total_message_count": 0,
             "natal_chart_context": natal_chart_context or {},
+            "last_character_id": character_id or DEFAULT_CHARACTER,
+            "character_changed": False,
             "created_at": now,
             "updated_at": now,
         }
@@ -325,23 +436,27 @@ class AstroChatService:
         self,
         natal_chart_context: Dict,
         current_summary: str,
-        recent_messages: List[Dict],
         transits_context: str = "",
         character_id: str = "nova",
     ) -> str:
         """
-        Build the system prompt for the selected guide character.
+        Build the system prompt for the selected guide character using PERSONA_PROMPTS.
 
         Args:
             natal_chart_context: User's cached chart data
-            current_summary: Rolling conversation summary
-            recent_messages: Last N messages for immediate context
+            current_summary: Rolling conversation summary (for long-term memory)
             transits_context: Current transits affecting the user
             character_id: Guide character ID (madame_luna, elder_weiss, nova, shadow)
 
         Returns:
             Complete system prompt string
+
+        Note: Recent messages are now passed directly to OpenAI API for better context.
         """
+        # Get persona from PERSONA_PROMPTS dictionary
+        persona_data = PERSONA_PROMPTS.get(character_id, PERSONA_PROMPTS.get(DEFAULT_CHARACTER))
+        persona_prompt = persona_data["system_prompt"]
+
         # Extract chart data
         sun = natal_chart_context.get("sun_sign", "Unknown")
         moon = natal_chart_context.get("moon_sign", "Unknown")
@@ -363,51 +478,36 @@ class AstroChatService:
         if transits_context:
             chart_section += f"\n\nCURRENT TRANSITS:\n{transits_context}"
 
-        # Build memory section
+        # Build memory section (long-term summary for context beyond recent messages)
         memory_section = ""
         if current_summary:
             memory_section = f"""
-CONVERSATION MEMORY (Summary of all previous discussions):
+LONG-TERM MEMORY (Summary of older conversations):
 {current_summary}"""
 
-        # Build recent context section
-        recent_section = ""
-        if recent_messages:
-            character_name = self._get_character_name(character_id)
-            recent_section = "\n\nRECENT MESSAGES:"
-            for msg in recent_messages:
-                role_label = "User" if msg["role"] == "user" else character_name
-                content_preview = msg["content"][:200] + "..." if len(msg["content"]) > 200 else msg["content"]
-                recent_section += f"\n{role_label}: {content_preview}"
-
-        # Get character-specific persona
-        persona = self._get_character_persona(character_id, venus, moon)
-
         # Complete system prompt
-        system_prompt = f"""{persona}
+        system_prompt = f"""{persona_prompt}
 
 {chart_section}
 {memory_section}
-{recent_section}
 
-IMPORTANT:
+IMPORTANT RULES:
 - Answer their specific question using their chart as context
-- If they refer to something from earlier in the conversation, acknowledge it
+- Reference the conversation history when relevant
 - Don't just give textbook meanings - personalize to THEIR chart
-- You have access to the full conversation history through your memory
-- Keep responses concise (2-4 sentences) but meaningful"""
+- Stay in character at all times"""
 
         return system_prompt
 
     def _get_character_name(self, character_id: str) -> str:
-        """Get the display name for a character."""
-        names = {
-            "madame_luna": "Luna",
-            "elder_weiss": "Elder",
-            "nova": "Nova",
-            "shadow": "Shadow",
-        }
-        return names.get(character_id, "Guide")
+        """Get the display name for a character from PERSONA_PROMPTS."""
+        persona_data = PERSONA_PROMPTS.get(character_id, PERSONA_PROMPTS.get(DEFAULT_CHARACTER))
+        return persona_data.get("name", "Guide")
+
+    def get_character_welcome(self, character_id: str) -> str:
+        """Get the welcome message for a character from PERSONA_PROMPTS."""
+        persona_data = PERSONA_PROMPTS.get(character_id, PERSONA_PROMPTS.get(DEFAULT_CHARACTER))
+        return persona_data.get("welcome", "Greetings, seeker. How may I guide you today?")
 
     def _get_character_persona(self, character_id: str, venus_sign: str, moon_sign: str) -> str:
         """Get character-specific persona for system prompt."""
@@ -524,9 +624,14 @@ SPEAKING STYLE:
                 "should_summarize": False,
             }
 
-        # Step 1: Get or create metadata with chart context
-        metadata = self.get_or_create_metadata(user_id, natal_chart_context)
+        # Step 1: Get or create metadata with chart context and character tracking
+        metadata = self.get_or_create_metadata(user_id, natal_chart_context, character_id)
         current_summary = metadata.get("current_summary", "")
+        character_changed = metadata.get("character_changed", False)
+
+        # Log character switch for debugging
+        if character_changed:
+            print(f"[AstroChatService] Character switched to {character_id} for user={user_id}")
 
         # Step 2: Get recent messages
         recent_messages = self.get_recent_messages(user_id)
@@ -535,16 +640,21 @@ SPEAKING STYLE:
         system_prompt = self.build_system_prompt(
             natal_chart_context=natal_chart_context,
             current_summary=current_summary,
-            recent_messages=recent_messages,
             transits_context=transits_context,
             character_id=character_id,
         )
 
         # Step 4: Prepare messages for API
-        messages = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": f"{user_name} asks: {message}"}
-        ]
+        # CRITICAL FIX: Include recent messages for context continuity (fixes "Context Amnesia")
+        messages = [{"role": "system", "content": system_prompt}]
+
+        # Add recent messages from database for conversation context
+        for msg in recent_messages:
+            role = "user" if msg.get("role") == "user" else "assistant"
+            messages.append({"role": role, "content": msg.get("content", "")})
+
+        # Add current user message
+        messages.append({"role": "user", "content": f"{user_name} asks: {message}"})
 
         # Step 5: Call OpenAI
         try:
