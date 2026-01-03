@@ -110,51 +110,116 @@ def get_cache() -> CacheStorage:
 
 
 # =============================================================================
-# Horoscope Caching Service
+# Horoscope Caching Service (Firestore + 7 AM Mystic Date Rule)
 # =============================================================================
 
 class HoroscopeCacheService:
     """
-    Service for caching daily horoscopes.
+    Service for caching daily horoscopes with Firestore persistence.
+
+    Uses the "Mystic Date" 7 AM rule:
+    - Day resets at 7:00 AM, not midnight
+    - Ensures consistent daily readings from 7 AM to 7 AM (next day)
 
     Flow:
-    1. Check cache for existing horoscope for user+date
-    2. If exists, return cached (zero OpenAI cost)
-    3. If not, generate, cache, and return
+    1. Calculate Mystic Date (7 AM rule)
+    2. Check Firestore: users/{user_id}/daily_horoscopes/horoscope_{mystic_date}
+    3. If exists: Return cached data (zero OpenAI cost)
+    4. If missing: Return None (caller will generate and cache)
     """
+
+    # Firebase Firestore reference (set during app initialization)
+    _firestore_db = None
+
+    @classmethod
+    def set_firestore_db(cls, db):
+        """Set the Firestore database reference."""
+        cls._firestore_db = db
+
+    @staticmethod
+    def _get_mystic_date_string() -> str:
+        """Get the current Mystic Date string using 7 AM rule."""
+        from services.astrology_service import get_mystic_date_string
+        return get_mystic_date_string()
+
+    @staticmethod
+    def _get_doc_id() -> str:
+        """Get the Firestore document ID for today's horoscope."""
+        mystic_date = HoroscopeCacheService._get_mystic_date_string()
+        return f"horoscope_{mystic_date}"
 
     @staticmethod
     def get_cached_horoscope(user_id: str, target_date: date = None) -> Optional[dict]:
-        """Get cached horoscope if available."""
-        if target_date is None:
-            target_date = date.today()
+        """
+        Get cached horoscope from Firestore if available.
 
-        date_str = target_date.isoformat()
-        cached = get_cache().get_horoscope(user_id, date_str)
+        Uses Mystic Date (7 AM rule) for cache key.
+        """
+        # Use Mystic Date instead of target_date
+        mystic_date = HoroscopeCacheService._get_mystic_date_string()
+        doc_id = f"horoscope_{mystic_date}"
 
+        # Try Firestore first
+        db = HoroscopeCacheService._firestore_db
+        if db:
+            try:
+                doc_ref = db.collection("users").document(user_id).collection("daily_horoscopes").document(doc_id)
+                doc = doc_ref.get()
+
+                if doc.exists:
+                    cached = doc.to_dict()
+                    cached["is_cached"] = True
+                    print(f"[HoroscopeCache] FIRESTORE HIT for user={user_id}, mystic_date={mystic_date}")
+                    return cached
+
+                print(f"[HoroscopeCache] FIRESTORE MISS for user={user_id}, mystic_date={mystic_date}")
+            except Exception as e:
+                print(f"[HoroscopeCache] Firestore error: {e}")
+
+        # Fallback to in-memory cache
+        cached = get_cache().get_horoscope(user_id, mystic_date)
         if cached:
-            # Mark as served from cache
             cached["is_cached"] = True
-            print(f"[HoroscopeCache] HIT for user={user_id}, date={date_str}")
+            print(f"[HoroscopeCache] MEMORY HIT for user={user_id}, mystic_date={mystic_date}")
             return cached
 
-        print(f"[HoroscopeCache] MISS for user={user_id}, date={date_str}")
+        print(f"[HoroscopeCache] MISS for user={user_id}, mystic_date={mystic_date}")
         return None
 
     @staticmethod
     def cache_horoscope(user_id: str, horoscope_data: dict, target_date: date = None):
-        """Store horoscope in cache."""
-        if target_date is None:
-            target_date = date.today()
+        """
+        Store horoscope in both Firestore and in-memory cache.
 
-        date_str = target_date.isoformat()
+        Uses Mystic Date (7 AM rule) for cache key.
+        """
+        from datetime import datetime, timezone
+
+        # Use Mystic Date instead of target_date
+        mystic_date = HoroscopeCacheService._get_mystic_date_string()
+        doc_id = f"horoscope_{mystic_date}"
 
         # Add cache metadata
-        horoscope_data["cached_at"] = datetime.now().isoformat()
-        horoscope_data["is_cached"] = False  # First time is not from cache
+        cache_data = {
+            **horoscope_data,
+            "mystic_date": mystic_date,
+            "cached_at": datetime.now(timezone.utc).isoformat(),
+            "is_cached": False,  # First time is not from cache
+        }
 
-        get_cache().set_horoscope(user_id, date_str, horoscope_data)
-        print(f"[HoroscopeCache] STORED for user={user_id}, date={date_str}")
+        # Store in Firestore
+        db = HoroscopeCacheService._firestore_db
+        if db:
+            try:
+                doc_ref = db.collection("users").document(user_id).collection("daily_horoscopes").document(doc_id)
+                doc_ref.set(cache_data)
+                print(f"[HoroscopeCache] FIRESTORE STORED for user={user_id}, mystic_date={mystic_date}")
+            except Exception as e:
+                print(f"[HoroscopeCache] Firestore store error: {e}")
+
+        # Also store in memory cache as backup
+        get_cache().set_horoscope(user_id, mystic_date, cache_data)
+        print(f"[HoroscopeCache] MEMORY STORED for user={user_id}, mystic_date={mystic_date}")
 
 
 # =============================================================================
