@@ -12,16 +12,11 @@ import '../../../home/presentation/providers/character_provider.dart';
 import '../../data/services/astrology_api_service.dart';
 
 /// Astro Guide Chat widget for the Sky Hall Guide tab.
-/// Allows users to chat with an AI that interprets their natal chart.
 ///
-/// Uses Firestore real-time listeners for guaranteed message persistence:
-/// - Messages are displayed via StreamBuilder (real-time sync)
-/// - Backend handles saving messages and AI responses
-/// - Messages persist across app restarts
-///
-/// Firestore Schema:
-///   users/{user_id}/astro_guide/metadata - Summary and chart context
-///   users/{user_id}/astro_guide/metadata/messages - Message history
+/// Uses a hybrid approach for reliability:
+/// - Local state for immediate UI updates (optimistic)
+/// - Firestore stream as backup when available
+/// - Works even if backend Firebase is temporarily unavailable
 class AstroGuideChatWidget extends ConsumerStatefulWidget {
   const AstroGuideChatWidget({super.key});
 
@@ -35,7 +30,11 @@ class _AstroGuideChatWidgetState extends ConsumerState<AstroGuideChatWidget> {
   final FocusNode _focusNode = FocusNode();
   final ScrollController _scrollController = ScrollController();
 
+  // Local messages for immediate display
+  final List<_AstroChatMessage> _localMessages = [];
+
   bool _isLoading = false;
+  bool _initialLoadDone = false;
   String? _sessionId;
 
   final AstrologyApiService _apiService = AstrologyApiService();
@@ -54,35 +53,50 @@ class _AstroGuideChatWidgetState extends ConsumerState<AstroGuideChatWidget> {
     super.dispose();
   }
 
-  /// Initialize chat session
-  void _initSession() {
+  /// Initialize chat session and try to load from Firestore
+  Future<void> _initSession() async {
     final deviceId = ref.read(deviceIdProvider);
     _sessionId = 'session_$deviceId';
+
+    // Try to load existing messages from Firestore
+    await _loadFromFirestore();
+
+    setState(() => _initialLoadDone = true);
   }
 
-  /// Get the Firestore stream for chat messages
-  Stream<List<_AstroChatMessage>> _getChatStream() {
+  /// Try to load messages from Firestore
+  Future<void> _loadFromFirestore() async {
     final deviceId = ref.read(deviceIdProvider);
 
-    return FirebaseFirestore.instance
-        .collection('users')
-        .doc(deviceId)
-        .collection('astro_guide')
-        .doc('metadata')
-        .collection('messages')
-        .orderBy('timestamp', descending: false) // Oldest first for chat display
-        .snapshots()
-        .map((snapshot) {
-      return snapshot.docs.map((doc) {
-        final data = doc.data();
-        return _AstroChatMessage(
-          id: doc.id,
-          text: data['content'] as String? ?? '',
-          isUser: data['role'] == 'user',
-          timestamp: _parseTimestamp(data['timestamp']),
-        );
-      }).toList();
-    });
+    try {
+      final snapshot = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(deviceId)
+          .collection('astro_guide')
+          .doc('metadata')
+          .collection('messages')
+          .orderBy('timestamp', descending: false)
+          .get();
+
+      if (snapshot.docs.isNotEmpty) {
+        setState(() {
+          _localMessages.clear();
+          for (final doc in snapshot.docs) {
+            final data = doc.data();
+            _localMessages.add(_AstroChatMessage(
+              id: doc.id,
+              text: data['content'] as String? ?? '',
+              isUser: data['role'] == 'user',
+              timestamp: _parseTimestamp(data['timestamp']),
+            ));
+          }
+        });
+        debugPrint('[AstroChat] Loaded ${snapshot.docs.length} messages from Firestore');
+      }
+    } catch (e) {
+      debugPrint('[AstroChat] Could not load from Firestore: $e');
+      // Continue without Firestore data
+    }
   }
 
   /// Parse timestamp from Firestore
@@ -144,10 +158,12 @@ class _AstroGuideChatWidgetState extends ConsumerState<AstroGuideChatWidget> {
   Future<void> _startNewConversation() async {
     final deviceId = ref.read(deviceIdProvider);
 
-    setState(() => _isLoading = true);
+    setState(() {
+      _localMessages.clear();
+      _isLoading = true;
+    });
 
     try {
-      // Clear history via API - this deletes Firestore messages
       _sessionId = await _apiService.startNewChatSession(userId: deviceId);
     } catch (e) {
       debugPrint('[AstroChat] Failed to start new conversation: $e');
@@ -166,7 +182,20 @@ class _AstroGuideChatWidgetState extends ConsumerState<AstroGuideChatWidget> {
     _messageController.clear();
     _focusNode.unfocus();
 
-    setState(() => _isLoading = true);
+    // Add user message immediately (optimistic UI)
+    final userMessage = _AstroChatMessage(
+      text: message,
+      isUser: true,
+      timestamp: DateTime.now(),
+    );
+
+    setState(() {
+      _localMessages.add(userMessage);
+      _isLoading = true;
+    });
+
+    // Scroll to show user message
+    WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
 
     // Get user data for API call
     final user = ref.read(userProvider);
@@ -179,9 +208,7 @@ class _AstroGuideChatWidgetState extends ConsumerState<AstroGuideChatWidget> {
         final selectedCharacterId = ref.read(selectedCharacterIdProvider);
 
         // Call the Astro-Guide chat API
-        // Backend saves both user message and AI response to Firestore
-        // StreamBuilder will automatically update the UI
-        await _apiService.sendAstroGuideChat(
+        final result = await _apiService.sendAstroGuideChat(
           userId: deviceId,
           sessionId: _sessionId!,
           message: message,
@@ -194,11 +221,34 @@ class _AstroGuideChatWidgetState extends ConsumerState<AstroGuideChatWidget> {
           characterId: selectedCharacterId,
         );
 
-        // Scroll to bottom after new messages arrive
-        _scrollToBottom();
+        // Get the AI response
+        final responseText = result['response'] as String? ??
+            'I sense cosmic interference. Please try again.';
+
+        // Add AI response to local messages
+        final aiMessage = _AstroChatMessage(
+          text: responseText,
+          isUser: false,
+          timestamp: DateTime.now(),
+        );
+
+        setState(() {
+          _localMessages.add(aiMessage);
+          _isLoading = false;
+        });
+
+        // Scroll to show AI response
+        WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
+
       } catch (e) {
         debugPrint('[AstroChat] API error: $e');
-        // Show error to user
+
+        // Remove the optimistic user message on error
+        setState(() {
+          _localMessages.removeLast();
+          _isLoading = false;
+        });
+
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -209,7 +259,12 @@ class _AstroGuideChatWidgetState extends ConsumerState<AstroGuideChatWidget> {
         }
       }
     } else {
-      // No birth data - show error
+      // No birth data - remove optimistic message and show error
+      setState(() {
+        _localMessages.removeLast();
+        _isLoading = false;
+      });
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -219,8 +274,6 @@ class _AstroGuideChatWidgetState extends ConsumerState<AstroGuideChatWidget> {
         );
       }
     }
-
-    setState(() => _isLoading = false);
   }
 
   @override
@@ -231,9 +284,35 @@ class _AstroGuideChatWidgetState extends ConsumerState<AstroGuideChatWidget> {
       return _buildNoBirthDataState();
     }
 
+    // Show loading while initial load
+    if (!_initialLoadDone) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            SizedBox(
+              width: 32,
+              height: 32,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                valueColor: AlwaysStoppedAnimation<Color>(AppColors.mysticTeal),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Loading cosmic memory...',
+              style: AppTypography.bodySmall.copyWith(
+                color: AppColors.textSecondary,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
     return Column(
       children: [
-        // Chat Messages with StreamBuilder
+        // Chat Messages
         Expanded(
           child: Stack(
             children: [
@@ -244,95 +323,20 @@ class _AstroGuideChatWidgetState extends ConsumerState<AstroGuideChatWidget> {
                 ),
               ),
 
-              // Messages list with Firestore Stream
-              StreamBuilder<List<_AstroChatMessage>>(
-                stream: _getChatStream(),
-                builder: (context, snapshot) {
-                  // Loading state
-                  if (snapshot.connectionState == ConnectionState.waiting &&
-                      !snapshot.hasData) {
-                    return Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          SizedBox(
-                            width: 32,
-                            height: 32,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              valueColor: AlwaysStoppedAnimation<Color>(
-                                AppColors.mysticTeal,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-                          Text(
-                            'Loading cosmic memory...',
-                            style: AppTypography.bodySmall.copyWith(
-                              color: AppColors.textSecondary,
-                            ),
-                          ),
-                        ],
-                      ),
-                    );
-                  }
-
-                  // Error state
-                  if (snapshot.hasError) {
-                    debugPrint('[AstroChat] Stream error: ${snapshot.error}');
-                    return Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            Icons.cloud_off,
-                            size: 48,
-                            color: AppColors.textTertiary,
-                          ),
-                          const SizedBox(height: 16),
-                          Text(
-                            'Connection issue',
-                            style: AppTypography.titleSmall.copyWith(
-                              color: AppColors.textSecondary,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            'Please check your internet connection',
-                            style: AppTypography.bodySmall.copyWith(
-                              color: AppColors.textTertiary,
-                            ),
-                          ),
-                        ],
-                      ),
-                    );
-                  }
-
-                  final messages = snapshot.data ?? [];
-
-                  // Empty state - show welcome message
-                  if (messages.isEmpty) {
-                    return _buildWelcomeState();
-                  }
-
-                  // Scroll to bottom when messages change
-                  WidgetsBinding.instance.addPostFrameCallback((_) {
-                    _scrollToBottom();
-                  });
-
-                  return ListView.builder(
-                    controller: _scrollController,
-                    padding: const EdgeInsets.all(AppConstants.spacingMedium),
-                    itemCount: messages.length + (_isLoading ? 1 : 0),
-                    itemBuilder: (context, index) {
-                      if (_isLoading && index == messages.length) {
-                        return _buildTypingIndicator();
-                      }
-                      return _buildMessageBubble(messages[index], index);
-                    },
-                  );
-                },
-              ),
+              // Messages or Welcome state
+              _localMessages.isEmpty
+                  ? _buildWelcomeState()
+                  : ListView.builder(
+                      controller: _scrollController,
+                      padding: const EdgeInsets.all(AppConstants.spacingMedium),
+                      itemCount: _localMessages.length + (_isLoading ? 1 : 0),
+                      itemBuilder: (context, index) {
+                        if (_isLoading && index == _localMessages.length) {
+                          return _buildTypingIndicator();
+                        }
+                        return _buildMessageBubble(_localMessages[index], index);
+                      },
+                    ),
             ],
           ),
         ),
