@@ -515,6 +515,10 @@ class ChatMessageRequest(BaseModel):
     message: str = Field(..., min_length=1, max_length=1000, description="User message")
     character_id: str = Field(default="madame_luna", description="Oracle character ID")
     context: Optional[str] = Field(default=None, description="Reading context for the conversation")
+    conversation_history: Optional[list] = Field(
+        default=None,
+        description="Previous messages in the conversation [{text, is_user}, ...]"
+    )
     # User preferences for personalized chat
     knowledge_level: Optional[str] = Field(
         default=None,
@@ -615,11 +619,12 @@ async def send_chat_message(request: ChatMessageRequest):
         # Get the tarot interpretation service
         tarot_service = get_tarot_service()
 
-        # Generate dynamic chat response with user preferences
+        # Generate dynamic chat response with user preferences and conversation history
         response_text = await tarot_service.generate_chat_response(
             message=request.message,
             character_id=request.character_id,
             reading_context=request.context,
+            conversation_history=request.conversation_history,
             knowledge_level=request.knowledge_level,
             preferred_tone=request.preferred_tone,
             gender=request.gender,

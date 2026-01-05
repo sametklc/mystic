@@ -58,12 +58,20 @@ class ChatState {
 class ChatNotifier extends StateNotifier<ChatState> {
   final TarotApiService _apiService;
 
-  ChatNotifier(this._apiService, {required String characterId, String? readingContext})
-      : super(ChatState.initial(characterId: characterId, readingContext: readingContext));
+  ChatNotifier(this._apiService, ChatParams params)
+      : super(ChatState.initial(characterId: params.characterId, readingContext: params.fullContext));
 
   /// Sends a message to the Oracle.
   Future<void> sendMessage(String message) async {
     if (message.trim().isEmpty) return;
+
+    // Build conversation history from existing messages (excluding the new one)
+    final conversationHistory = state.messages
+        .map((msg) => {
+              'text': msg.text,
+              'is_user': msg.isUser,
+            })
+        .toList();
 
     // Add user message immediately
     final userMessage = ChatMessageModel.user(text: message.trim());
@@ -74,12 +82,13 @@ class ChatNotifier extends StateNotifier<ChatState> {
     );
 
     try {
-      // Call API
+      // Call API with conversation history
       final response = await _apiService.sendChatMessage(
         chatId: state.chatId,
         message: message.trim(),
         characterId: state.characterId,
         readingContext: state.readingContext,
+        conversationHistory: conversationHistory,
       );
 
       // Add Oracle response
@@ -139,11 +148,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
 final chatProvider = StateNotifierProvider.family<ChatNotifier, ChatState, ChatParams>(
   (ref, params) {
     final apiService = ref.watch(tarotApiServiceProvider);
-    return ChatNotifier(
-      apiService,
-      characterId: params.characterId,
-      readingContext: params.readingContext,
-    );
+    return ChatNotifier(apiService, params);
   },
 );
 
@@ -151,21 +156,47 @@ final chatProvider = StateNotifierProvider.family<ChatNotifier, ChatState, ChatP
 class ChatParams {
   final String characterId;
   final String? readingContext;
+  final String? profileId;
+  final String? profileName;
+  final String? profileSunSign;
 
   const ChatParams({
     required this.characterId,
     this.readingContext,
+    this.profileId,
+    this.profileName,
+    this.profileSunSign,
   });
+
+  /// Build a full context string including profile info and reading.
+  String? get fullContext {
+    final parts = <String>[];
+
+    if (profileName != null && profileSunSign != null) {
+      parts.add('The seeker is $profileName, a $profileSunSign.');
+    } else if (profileName != null) {
+      parts.add('The seeker is $profileName.');
+    } else if (profileSunSign != null) {
+      parts.add('The seeker is a $profileSunSign.');
+    }
+
+    if (readingContext != null && readingContext!.isNotEmpty) {
+      parts.add(readingContext!);
+    }
+
+    return parts.isNotEmpty ? parts.join(' ') : null;
+  }
 
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
       other is ChatParams &&
           other.characterId == characterId &&
-          other.readingContext == readingContext;
+          other.readingContext == readingContext &&
+          other.profileId == profileId;
 
   @override
-  int get hashCode => characterId.hashCode ^ (readingContext?.hashCode ?? 0);
+  int get hashCode => characterId.hashCode ^ (readingContext?.hashCode ?? 0) ^ (profileId?.hashCode ?? 0);
 }
 
 /// Provider for checking if chat is loading.

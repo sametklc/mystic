@@ -291,7 +291,8 @@ class TarotApiService {
   /// [chatId] - The unique chat session ID.
   /// [message] - The user's message.
   /// [characterId] - The Oracle character (e.g., 'madame_luna').
-  /// [context] - Optional context from the tarot reading.
+  /// [readingContext] - Optional context from the tarot reading.
+  /// [conversationHistory] - Optional list of previous messages for context.
   ///
   /// Returns the Oracle's response text.
   Future<String> sendChatMessage({
@@ -299,6 +300,7 @@ class TarotApiService {
     required String message,
     required String characterId,
     String? readingContext,
+    List<Map<String, dynamic>>? conversationHistory,
   }) async {
     try {
       final response = await _dio.post(
@@ -308,6 +310,8 @@ class TarotApiService {
           'message': message,
           'character_id': characterId,
           if (readingContext != null) 'context': readingContext,
+          if (conversationHistory != null && conversationHistory.isNotEmpty)
+            'conversation_history': conversationHistory,
         },
       );
 
