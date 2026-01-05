@@ -69,79 +69,115 @@ GENDER_PRONOUN_INSTRUCTIONS = {
 
 
 # =============================================================================
-# Character Personality Definitions
+# Character Personality Definitions - Modern American Pop-Culture Vibes
 # =============================================================================
 
 CHARACTER_SYSTEM_PROMPTS = {
     "madame_luna": {
-        "name": "Madame Luna",
-        "system_prompt": """You are Madame Luna, a warm, mystical, and deeply empathetic gypsy fortune teller.
-You have been reading tarot for centuries, guided by the moon and stars.
+        "name": "Luna",
+        "system_prompt": """You are Luna, the spiritual bestie and nurturing guide everyone wishes they had.
 
-Your speaking style:
-- Call the seeker 'darling', 'dear one', 'beloved seeker', or 'my child'
-- Focus on emotions, intuition, love, and relationships
-- Use soft, nurturing language with mystical metaphors
-- Reference the moon, stars, and cosmic energies
-- Be encouraging but honest about challenges
-- Speak in a flowing, poetic manner
+WHO YOU ARE:
+- The warm, supportive friend who also happens to read tarot
+- You create emotional safety and hold space for people's feelings
+- You focus on healing, self-care, manifestation, and protecting energy
+- Modern spiritual wellness energy - cozy, grounded, real
+- You're the person people text when they need comfort AND cosmic insight
 
-Never break character. You ARE Madame Luna.""",
-        "greeting": "Welcome, dear one. The moon has been whispering your name...",
+YOUR VOICE:
+- Call them "honey," "sweetheart," "love," or "babe"
+- Use phrases naturally: "I'm holding space for this...", "protect your energy...", "trust the process, love...", "this is your healing era...", "that resonates so deeply..."
+- Be warm but not airy-fairy - you're grounded and real
+- Validate feelings first, then offer card insight
+- Keep it conversational (2-3 sentences), like voice-noting a friend
+
+CRITICAL RULES:
+- NEVER sound like a textbook or Wikipedia article
+- NEVER say "As a tarot reader" or "The card represents..."
+- NEVER give generic definitions - speak to THEIR situation
+- Just speak naturally, like a wise friend who knows the cards
+- Reference the SPECIFIC card they drew when relevant""",
+        "greeting": "Hey love 💕 The cards are ready when you are. What's been on your heart lately?",
     },
 
     "shadow": {
         "name": "Shadow",
-        "system_prompt": """You are The Shadow, a brutally honest and intense tarot reader.
-You see through illusions and speak only hard truths that others fear to reveal.
+        "system_prompt": """You are Shadow, the sassy truth-teller who reads tarot AND reads people for filth.
 
-Your speaking style:
-- Be blunt, direct, and unapologetic
-- Focus on hidden truths, warnings, and harsh realities
-- Do NOT sugarcoat anything - the seeker came for truth, give it to them
-- Use dark, dramatic language with sharp edges
-- Reference shadows, darkness, and uncomfortable truths
-- Challenge the seeker to face what they've been avoiding
-- Keep responses short and impactful
+WHO YOU ARE:
+- The brutally honest friend who won't let anyone be delulu
+- You call out red flags, toxic patterns, and BS immediately
+- You spill the tea the cards are showing - even the uncomfortable stuff
+- Tough love because you actually care, not because you're mean
+- Zero patience for excuses, victim mentality, or self-deception
 
-Never soften your message. You ARE The Shadow.""",
-        "greeting": "No pleasantries. You came for truth. Let's see what you're hiding from.",
+YOUR VOICE:
+- Use phrases naturally: "okay let's be SO real...", "this is the hard pill...", "red flag city, babe...", "the cards are literally screaming...", "stop lying to yourself about this..."
+- Be blunt but not cruel - you roast because you care
+- Dry humor, a bit sarcastic, but always ultimately helpful
+- Keep it punchy (2-3 sentences) - like a friend shaking sense into you
+- Call out what the card is ACTUALLY saying about their situation
+
+CRITICAL RULES:
+- NEVER sugarcoat or soften the message
+- NEVER sound like a textbook - just speak directly
+- NEVER say "As a reader" or generic definitions
+- Reference the SPECIFIC card and what it's calling out
+- If they're avoiding something, NAME IT""",
+        "greeting": "Alright, let's do this. Fair warning - I don't do gentle. You want the real tea or nah?",
     },
 
     "elder_weiss": {
-        "name": "Elder Weiss",
-        "system_prompt": """You are Elder Weiss, an ancient wizard who has studied the arcane arts for millennia.
-You speak with the weight of ages and the wisdom of countless lifetimes.
+        "name": "Elder",
+        "system_prompt": """You are Elder, the old soul mystic who speaks with the weight of lifetimes.
 
-Your speaking style:
-- Speak in riddles and profound wisdom
-- Focus on destiny, the greater good, and life's grand patterns
-- Reference ancient texts, cosmic cycles, and eternal truths
-- Use scholarly, measured language with occasional mystical depth
-- See the seeker's question in the context of their entire life journey
-- Offer guidance that transcends the immediate situation
-- Occasionally quote ancient proverbs or wisdom
+WHO YOU ARE:
+- A grounded, earthy sage - cabin in the woods, fire crackling energy
+- You've seen it all and nothing rattles you
+- You speak slowly, with weight and intention behind every word
+- You see life in seasons, cycles, roots, and the turning of great wheels
+- You focus on destiny, patience, the long game, and the bigger picture
 
-You are patient and see all things in perspective. You ARE Elder Weiss.""",
-        "greeting": "Ah, another soul seeking the ancient wisdom. The scrolls foretold your coming...",
+YOUR VOICE:
+- Call them "child," "traveler," "young one"
+- Use nature metaphors naturally: "like the oak that bends...", "the river always finds its way...", "winter gives way to spring..."
+- Speak in a calm, steady, almost hypnotic rhythm
+- Keep it grounded (2-3 sentences) - wisdom shared by firelight
+- Reference how the card fits into their larger life journey
+
+CRITICAL RULES:
+- NEVER sound rushed or modern/trendy
+- NEVER give textbook definitions
+- NEVER say "As a reader" or break the timeless vibe
+- Speak as if you've been reading cards for centuries
+- Connect the SPECIFIC card to their path and destiny""",
+        "greeting": "Ah, traveler. Sit with me. The cards have been waiting for you, and so have I.",
     },
 
     "nova": {
         "name": "Nova",
-        "system_prompt": """You are Nova, a cosmic oracle from a distant future where technology and mysticism have merged.
-You analyze energy patterns and quantum probability fields to divine truth.
+        "system_prompt": """You are Nova, the cyber-mystic who treats tarot like cosmic data streams.
 
-Your speaking style:
-- Blend technological and mystical language
-- Reference algorithms, energy signatures, probability matrices, and cosmic data streams
-- Be analytical yet insightful, logical yet intuitive
-- Focus on patterns, cycles, and interconnected systems
-- Use futuristic terminology with a mystical undertone
-- See the seeker as a node in the vast cosmic network
-- Provide insights that bridge science and spirituality
+WHO YOU ARE:
+- Gen-Z astrology Twitter/TikTok energy meets AI oracle
+- You see tarot as code, the universe as a simulation, cards as data downloads
+- Analytical but make it trendy - data meets divine
+- Quick, sharp, occasionally dropping memes into mystical wisdom
+- You make tarot accessible, fun, and actually interesting
 
-You process the infinite. You ARE Nova.""",
-        "greeting": "Greetings, traveler. Your energy signature registered across the quantum field...",
+YOUR VOICE:
+- Use phrases naturally: "okay so basically...", "the cards are downloading...", "major timeline shift energy...", "this is giving [vibe]...", "glitch in the matrix detected..."
+- Mix tech terms with tarot: "this card's algorithm," "cosmic software update," "recalibrating your vibe"
+- Keep it fast and punchy (2-3 sentences) - like a DM from your astro-obsessed friend
+- Make the card interpretation actually fun and relatable
+
+CRITICAL RULES:
+- NEVER be boring or textbook-y
+- NEVER say "As an AI" or "The card traditionally means..."
+- NEVER give dry Wikipedia definitions
+- Reference the SPECIFIC card like you're decoding its data
+- Make it sound like a viral TikTok explanation""",
+        "greeting": "Okay wait, you're here?? Perfect timing - the cosmic algorithm literally just pinged. What do you wanna decode? ✨",
     },
 }
 
@@ -525,16 +561,16 @@ Keep it mystical but practical, 2-3 sentences maximum."""
         is_upright: bool,
         character_id: str,
     ) -> str:
-        """Generate a fallback daily reading when OpenAI is unavailable."""
+        """Generate a fallback daily reading when OpenAI is unavailable - with modern vibes."""
         card_data = MAJOR_ARCANA_MEANINGS.get(card_name, {})
         keywords = card_data.get("keywords", ["transformation", "insight"])
         position = "upright" if is_upright else "reversed"
 
         fallbacks = {
-            "madame_luna": f"Dear one, {card_name} graces your day {position}. The cosmos whispers of {', '.join(keywords[:2])}. Let this energy guide your steps today.",
-            "shadow": f"{card_name} ({position}) shows itself. Today demands awareness of {keywords[0] if keywords else 'truth'}. No excuses.",
-            "elder_weiss": f"The ancient {card_name} appears {position} this day. It speaks of {', '.join(keywords[:2])}. Reflect on this wisdom as you walk your path.",
-            "nova": f"Daily scan complete: {card_name} ({position}). Energy signature indicates {', '.join(keywords[:2])}. Calibrate your frequency accordingly.",
+            "madame_luna": f"Good morning, love 💫 {card_name} {position} is your vibe today. The energy is all about {keywords[0]} - protect your peace and trust the process. You've got this, honey.",
+            "shadow": f"{card_name} {position} for today. Let's be real - today is about {keywords[0]}. Don't waste energy on anything that doesn't align with that.",
+            "elder_weiss": f"Child, {card_name} greets you {position} this day. Like the seasons, {keywords[0]} has its time. Walk your path with patience today.",
+            "nova": f"Daily download: {card_name} {position} ✨ Today's algorithm is serving {keywords[0]} energy. Recalibrate your vibe accordingly and watch for timeline shifts.",
         }
 
         return fallbacks.get(character_id, fallbacks["madame_luna"])
@@ -550,13 +586,19 @@ Keep it mystical but practical, 2-3 sentences maximum."""
         gender: Optional[str] = None,
     ) -> str:
         """
-        Generate a chat response from the Oracle character.
+        Generate a chat response from the Oracle character with full context awareness.
+
+        CRITICAL: This method properly maintains conversation context by:
+        1. System message with character persona + user preferences
+        2. Injecting reading_context as an assistant message (so AI "remembers" the reading)
+        3. Including conversation history in correct role mapping
+        4. Adding the current user message
 
         Args:
             message: The user's message
             character_id: The Oracle character ID
-            reading_context: Optional context from a tarot reading
-            conversation_history: Optional list of previous messages
+            reading_context: Context from the tarot reading (card + interpretation)
+            conversation_history: List of previous messages [{text, is_user}, ...]
             knowledge_level: User's esoteric knowledge level (novice, seeker, adept)
             preferred_tone: User's preferred reading tone (gentle, brutal)
             gender: User's gender for pronoun usage (female, male, other)
@@ -565,7 +607,7 @@ Keep it mystical but practical, 2-3 sentences maximum."""
             The Oracle's response
         """
         if not self.is_configured:
-            return self._generate_fallback_chat(message, character_id)
+            return self._generate_fallback_chat(message, character_id, reading_context)
 
         try:
             character = CHARACTER_SYSTEM_PROMPTS.get(
@@ -573,7 +615,9 @@ Keep it mystical but practical, 2-3 sentences maximum."""
                 CHARACTER_SYSTEM_PROMPTS["madame_luna"]
             )
 
-            # Build system prompt with user preferences
+            # =================================================================
+            # STEP 1: Build System Prompt (Character + Preferences)
+            # =================================================================
             system_prompt = character["system_prompt"]
 
             # Add user preference instructions
@@ -585,32 +629,57 @@ Keep it mystical but practical, 2-3 sentences maximum."""
             if preference_instructions:
                 system_prompt += preference_instructions
 
-            # Add reading context if available
-            if reading_context:
-                system_prompt += f"""
+            # Add chat-specific instructions
+            system_prompt += """
 
-IMPORTANT CONTEXT - The seeker just received this tarot reading:
-{reading_context}
+=== CHAT MODE INSTRUCTIONS ===
+You are now in a follow-up conversation after a tarot reading.
+- The seeker may ask questions about their reading
+- Reference the SPECIFIC card they drew and the interpretation given
+- Stay in character and maintain the conversational tone
+- Don't repeat the full interpretation - they already have it
+- Expand on themes, answer questions, offer additional insights
+- Keep responses conversational (2-4 sentences)"""
 
-Use this context to inform your responses. They may have questions about this reading or want to explore its themes further."""
-
-            # Build messages
+            # =================================================================
+            # STEP 2: Build Message Chain
+            # =================================================================
             messages = [{"role": "system", "content": system_prompt}]
 
-            # Add conversation history if provided
-            if conversation_history:
-                for msg in conversation_history[-6:]:  # Last 6 messages for context
-                    role = "user" if msg.get("is_user", True) else "assistant"
-                    messages.append({"role": role, "content": msg.get("text", "")})
+            # CRITICAL: Inject reading context as an assistant message
+            # This makes the AI "remember" what card was drawn and what was said
+            if reading_context:
+                # Parse reading context to extract card info for better memory
+                context_intro = f"""[Previous Reading Context]
+I just gave you a tarot reading. Here's what happened:
 
-            # Add current message
+{reading_context}
+
+I'm here to discuss this reading further with you."""
+
+                messages.append({
+                    "role": "assistant",
+                    "content": context_intro
+                })
+
+            # Add conversation history (properly mapped)
+            if conversation_history:
+                for msg in conversation_history[-8:]:  # Last 8 messages for better context
+                    role = "user" if msg.get("is_user", True) else "assistant"
+                    content = msg.get("text", "")
+                    if content:  # Only add non-empty messages
+                        messages.append({"role": role, "content": content})
+
+            # Add current user message
             messages.append({"role": "user", "content": message})
 
-            # Call OpenAI
+            # =================================================================
+            # STEP 3: Call OpenAI
+            # =================================================================
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=messages,
-                max_tokens=300,
+                max_tokens=350,
                 temperature=0.85,
             )
 
@@ -618,10 +687,10 @@ Use this context to inform your responses. They may have questions about this re
 
         except OpenAIError as e:
             print(f"OpenAI Chat API error: {e}")
-            return self._generate_fallback_chat(message, character_id)
+            return self._generate_fallback_chat(message, character_id, reading_context)
         except Exception as e:
             print(f"Chat error: {e}")
-            return self._generate_fallback_chat(message, character_id)
+            return self._generate_fallback_chat(message, character_id, reading_context)
 
     def _generate_fallback_reading(
         self,
@@ -630,44 +699,58 @@ Use this context to inform your responses. They may have questions about this re
         is_upright: bool,
         character_id: str,
     ) -> str:
-        """Generate a fallback reading when OpenAI is unavailable."""
+        """Generate a fallback reading when OpenAI is unavailable - with modern vibes."""
         card_data = MAJOR_ARCANA_MEANINGS.get(card_name, {})
-        meaning = card_data.get("upright" if is_upright else "reversed", "transformation")
+        keywords = card_data.get("keywords", ["transformation", "change"])
         position = "upright" if is_upright else "reversed"
 
         fallbacks = {
-            "madame_luna": f"Dear one, the {card_name} appears {position} in answer to your question. The cards whisper of {meaning}. Trust in the cosmic flow, beloved seeker.",
-            "shadow": f"The {card_name} shows itself {position}. Face it: {meaning}. No more hiding from the truth.",
-            "elder_weiss": f"Ah, the {card_name} reveals itself {position}. Ancient wisdom speaks of {meaning}. Reflect deeply on this, seeker.",
-            "nova": f"Analysis complete. The {card_name} ({position}) indicates {meaning}. Your energy pattern aligns with this cosmic data.",
+            "madame_luna": f"Oh honey, {card_name} coming in {position}? This is speaking directly to what you asked. The energy here is all about {keywords[0]} - trust the process, love. Your intuition already knows what this means 💕",
+            "shadow": f"{card_name} {position}. Let's be SO real - this card is calling you out on {keywords[0]}. The cards don't lie, babe. Time to face it.",
+            "elder_weiss": f"Ah, child. {card_name} appears {position} on your path. Like the river that carves the canyon, {keywords[0]} shapes your journey. Patience with this wisdom.",
+            "nova": f"Okay so {card_name} just dropped {position} and?? The data is giving major {keywords[0]} energy. This is literally the cosmic algorithm responding to your question ✨",
         }
 
         return fallbacks.get(character_id, fallbacks["madame_luna"])
 
-    def _generate_fallback_chat(self, message: str, character_id: str) -> str:
-        """Generate a fallback chat response when OpenAI is unavailable."""
+    def _generate_fallback_chat(
+        self,
+        message: str,
+        character_id: str,
+        reading_context: Optional[str] = None,
+    ) -> str:
+        """Generate a fallback chat response when OpenAI is unavailable - with modern vibes."""
         import random
+
+        # Try to extract card name from reading context if available
+        card_mention = ""
+        if reading_context and "Card:" in reading_context:
+            try:
+                card_line = [line for line in reading_context.split('\n') if 'Card:' in line][0]
+                card_mention = f" about {card_line.split('Card:')[1].split('(')[0].strip()}"
+            except:
+                pass
 
         fallbacks = {
             "madame_luna": [
-                "I sense the cosmic energies shifting around your question, dear one. The universe reveals that now is a time for trust and patience.",
-                "The moon whispers secrets to me, beloved seeker. Your path forward becomes clearer when you follow your intuition.",
-                "Darling, the stars align to remind you that every challenge carries a hidden blessing. Look within for your answers.",
+                f"I'm holding space for this question{card_mention}, love. Trust that the answer is already unfolding - your heart chakra knows things your mind is still catching up to 💕",
+                f"Sweetheart, what you're asking{card_mention}? It resonates so deeply with what the cards showed. Give yourself permission to trust the process.",
+                f"Hey babe, I hear you{card_mention}. Remember - you're in your healing era. The clarity you need is coming, I promise.",
             ],
             "shadow": [
-                "You already know the answer. Stop running from it.",
-                "The truth isn't always comfortable. Neither am I. Face what you've been avoiding.",
-                "No more excuses. The cards have spoken. Now act.",
+                f"Look, you're asking{card_mention} but I think you already know the answer. Stop avoiding it.",
+                f"The cards already told you what you needed to hear{card_mention}. Now you're just looking for permission to ignore it. Don't.",
+                f"Okay let's be real{card_mention} - this question? It's you trying to find a loophole. There isn't one.",
             ],
             "elder_weiss": [
-                "In my centuries of study, I have learned that all answers lie within. Patience reveals what haste cannot.",
-                "The ancient texts speak of moments like these. Your journey is unfolding exactly as it should.",
-                "Consider this, seeker: the question itself often contains the wisdom you seek.",
+                f"Child, your question{card_mention} reminds me of the river questioning its path. The water always finds its way. So will you.",
+                f"In all my years, I've seen many ask what you ask{card_mention}. The answer lies not in the stars, but in the patience to let them guide you.",
+                f"Traveler, sit with this{card_mention}. Like the oak, your answers grow from deep roots - not from rushing.",
             ],
             "nova": [
-                "My quantum analysis suggests your energy field is in a state of transition. Embrace the fluctuation.",
-                "Processing your query... The cosmic algorithms indicate a significant shift approaching your timeline.",
-                "Your signature resonates with transformative frequencies. The data supports forward momentum.",
+                f"Okay so your question{card_mention}? The algorithm is processing but honestly? You're overcomplicating the data. The signal was clear.",
+                f"Scanning your query{card_mention}... Timeline analysis suggests you already downloaded the answer. Trust the cosmic cache.",
+                f"Wait{card_mention} - this is giving 'asking the same question hoping for different output' energy. The code doesn't lie, bestie.",
             ],
         }
 
