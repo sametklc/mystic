@@ -2,12 +2,146 @@
 Tarot Interpretation Service
 Dynamic tarot card interpretation using OpenAI GPT-4o-mini.
 Supports character-based personalities, context-aware readings,
+multi-card spreads with structured JSON output,
 and personalized user preferences for knowledge level and tone.
 """
 
+import json
 import os
-from typing import Optional
+from dataclasses import dataclass
+from typing import Any, Optional
+
 from openai import OpenAI, OpenAIError
+
+
+# =============================================================================
+# Data Classes for Type Safety
+# =============================================================================
+
+@dataclass
+class TarotCard:
+    """Represents a single tarot card in a spread."""
+    name: str
+    is_upright: bool
+
+    @property
+    def orientation(self) -> str:
+        return "Upright" if self.is_upright else "Reversed"
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "TarotCard":
+        """Create TarotCard from dictionary."""
+        return cls(
+            name=data.get("name", data.get("card_name", "Unknown")),
+            is_upright=data.get("is_upright", data.get("isUpright", True))
+        )
+
+
+@dataclass
+class UserContext:
+    """User context for personalized readings."""
+    knowledge_level: Optional[str] = None  # novice, seeker, adept
+    preferred_tone: Optional[str] = None   # gentle, brutal
+    gender: Optional[str] = None           # female, male, other
+    birth_date: Optional[str] = None
+    zodiac_sign: Optional[str] = None
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "UserContext":
+        """Create UserContext from dictionary."""
+        if not data:
+            return cls()
+        return cls(
+            knowledge_level=data.get("knowledge_level"),
+            preferred_tone=data.get("preferred_tone"),
+            gender=data.get("gender"),
+            birth_date=data.get("birth_date"),
+            zodiac_sign=data.get("zodiac_sign"),
+        )
+
+
+@dataclass
+class CardAnalysis:
+    """Analysis result for a single card."""
+    position_name: str
+    card_name: str
+    orientation: str
+    interpretation: str
+
+
+@dataclass
+class SpreadReading:
+    """Complete spread reading result."""
+    cards_analysis: list[CardAnalysis]
+    synthesis: str
+    spread_type: str
+    character_id: str
+
+    def to_dict(self) -> dict:
+        """Convert to dictionary for JSON serialization."""
+        return {
+            "cards_analysis": [
+                {
+                    "position_name": ca.position_name,
+                    "card_name": ca.card_name,
+                    "orientation": ca.orientation,
+                    "interpretation": ca.interpretation,
+                }
+                for ca in self.cards_analysis
+            ],
+            "synthesis": self.synthesis,
+            "spread_type": self.spread_type,
+            "character_id": self.character_id,
+        }
+
+
+# =============================================================================
+# Spread Type Configurations
+# =============================================================================
+
+SPREAD_CONFIGURATIONS = {
+    "single_card": {
+        "name": "Single Card",
+        "positions": ["General Guidance"],
+        "description": "A single card for quick insight or daily guidance.",
+    },
+    "three_card": {
+        "name": "Three Card Spread",
+        "positions": ["Past", "Present", "Future"],
+        "description": "Classic timeline spread showing progression from past influences through present situation to future potential.",
+    },
+    "love_spread": {
+        "name": "Love Spread",
+        "positions": ["You", "Them", "Connection/Potential"],
+        "description": "Relationship spread examining both parties and their combined energy.",
+    },
+    "celtic_cross": {
+        "name": "Celtic Cross",
+        "positions": [
+            "Present Situation",      # 1. Center - current state
+            "Challenge/Obstacle",     # 2. Crossing - immediate challenge
+            "Distant Past",           # 3. Below - foundation/root cause
+            "Recent Past",            # 4. Left - recent events
+            "Best Outcome",           # 5. Crown - best possible outcome
+            "Near Future",            # 6. Right - what's coming soon
+            "Your Attitude",          # 7. Bottom of staff - your approach
+            "External Influences",    # 8. Environment - others' influence
+            "Hopes and Fears",        # 9. Inner emotions - desires/anxieties
+            "Final Outcome",          # 10. Top - likely conclusion
+        ],
+        "description": "Comprehensive 10-card spread for deep, multi-layered analysis.",
+    },
+    "decision_spread": {
+        "name": "Decision Spread",
+        "positions": ["Option A", "Option B", "What to Consider"],
+        "description": "Spread for weighing two choices and understanding key factors.",
+    },
+    "mind_body_spirit": {
+        "name": "Mind Body Spirit",
+        "positions": ["Mind", "Body", "Spirit"],
+        "description": "Holistic spread examining mental, physical, and spiritual aspects.",
+    },
+}
 
 
 # =============================================================================
@@ -371,6 +505,381 @@ Core Meaning: {meaning}
 Key Themes: {', '.join(keywords)}
 Focus on: {focus}"""
 
+    def _build_cards_context(
+        self,
+        cards: list[TarotCard],
+        positions: list[str],
+    ) -> str:
+        """Build context string for all cards in a spread."""
+        context_parts = []
+        for i, (card, position) in enumerate(zip(cards, positions), 1):
+            card_data = MAJOR_ARCANA_MEANINGS.get(card.name, {})
+            meaning_key = "upright" if card.is_upright else "reversed"
+            meaning = card_data.get(meaning_key, "transformation and insight")
+            keywords = card_data.get("keywords", ["insight", "change"])
+
+            context_parts.append(
+                f"Position {i} - {position}:\n"
+                f"  Card: {card.name} ({card.orientation})\n"
+                f"  Core Meaning: {meaning}\n"
+                f"  Key Themes: {', '.join(keywords)}"
+            )
+
+        return "\n\n".join(context_parts)
+
+    def _build_json_schema_instruction(self, positions: list[str]) -> str:
+        """Build the JSON schema instruction for the AI."""
+        example_cards = []
+        for pos in positions[:2]:  # Show 2 examples max
+            example_cards.append({
+                "position_name": pos,
+                "card_name": "Example Card",
+                "orientation": "Upright",
+                "interpretation": f"Detailed interpretation for the {pos} position..."
+            })
+
+        example_json = {
+            "cards_analysis": example_cards,
+            "synthesis": "A cohesive summary connecting all cards to answer the question..."
+        }
+
+        return f"""
+=== CRITICAL: JSON OUTPUT REQUIRED ===
+You MUST respond with ONLY valid JSON. No markdown, no explanations, no text before or after.
+
+Required JSON structure:
+{json.dumps(example_json, indent=2)}
+
+Rules:
+1. "cards_analysis" MUST contain exactly {len(positions)} objects, one for each position
+2. Each "interpretation" should be 2-4 sentences, specific to that position's meaning
+3. "synthesis" should be 3-5 sentences connecting all cards to answer the user's question
+4. Stay in character throughout the interpretations
+5. DO NOT include any text outside the JSON object
+"""
+
+    async def generate_spread_reading(
+        self,
+        cards: list[dict | TarotCard],
+        spread_type: str,
+        question: str,
+        user_context: Optional[dict | UserContext] = None,
+        character_id: str = "madame_luna",
+    ) -> dict:
+        """
+        Generate a multi-card spread reading with structured JSON output.
+
+        Args:
+            cards: List of card objects/dicts with 'name' and 'is_upright' fields
+            spread_type: Type of spread (three_card, love_spread, celtic_cross, single_card)
+            question: The seeker's question
+            user_context: Optional user context for personalization
+            character_id: The character providing the reading
+
+        Returns:
+            Dictionary with 'cards_analysis' and 'synthesis' fields
+
+        Example:
+            >>> cards = [
+            ...     {"name": "The Fool", "is_upright": True},
+            ...     {"name": "The Tower", "is_upright": False},
+            ...     {"name": "The Star", "is_upright": True}
+            ... ]
+            >>> result = await service.generate_spread_reading(
+            ...     cards=cards,
+            ...     spread_type="three_card",
+            ...     question="What should I focus on in my career?"
+            ... )
+        """
+        # Normalize inputs
+        normalized_cards = [
+            card if isinstance(card, TarotCard) else TarotCard.from_dict(card)
+            for card in cards
+        ]
+
+        ctx = (
+            user_context if isinstance(user_context, UserContext)
+            else UserContext.from_dict(user_context or {})
+        )
+
+        # Get spread configuration
+        spread_config = SPREAD_CONFIGURATIONS.get(spread_type)
+        if not spread_config:
+            spread_config = SPREAD_CONFIGURATIONS["single_card"]
+            spread_type = "single_card"
+
+        positions = spread_config["positions"]
+
+        # Validate card count matches spread
+        if len(normalized_cards) < len(positions):
+            # Pad with placeholder if needed
+            while len(normalized_cards) < len(positions):
+                normalized_cards.append(TarotCard(name="Unknown", is_upright=True))
+        elif len(normalized_cards) > len(positions):
+            normalized_cards = normalized_cards[:len(positions)]
+
+        # Generate reading
+        if not self.is_configured:
+            return self._generate_fallback_spread_reading(
+                normalized_cards, positions, spread_type, question, character_id
+            )
+
+        try:
+            result = await self._call_openai_for_spread(
+                cards=normalized_cards,
+                positions=positions,
+                spread_type=spread_type,
+                spread_description=spread_config["description"],
+                question=question,
+                user_context=ctx,
+                character_id=character_id,
+            )
+            return result
+        except Exception as e:
+            print(f"Spread reading error: {e}")
+            return self._generate_fallback_spread_reading(
+                normalized_cards, positions, spread_type, question, character_id
+            )
+
+    async def _call_openai_for_spread(
+        self,
+        cards: list[TarotCard],
+        positions: list[str],
+        spread_type: str,
+        spread_description: str,
+        question: str,
+        user_context: UserContext,
+        character_id: str,
+    ) -> dict:
+        """Internal method to call OpenAI for spread reading with JSON output."""
+        # Get character personality
+        character = CHARACTER_SYSTEM_PROMPTS.get(
+            character_id,
+            CHARACTER_SYSTEM_PROMPTS["madame_luna"]
+        )
+
+        # Build system prompt
+        system_prompt = f"""{character["system_prompt"]}
+
+=== SPREAD READING MODE ===
+You are performing a {spread_type.replace('_', ' ').title()} reading.
+{spread_description}
+
+Each card position has specific meaning in this spread.
+Interpret each card IN THE CONTEXT OF ITS POSITION.
+
+For example:
+- "The Fool" in "Past" position = past naivety, past new beginnings, past leaps of faith
+- "The Fool" in "Future" position = upcoming new beginning, future adventure ahead
+- "The Fool" in "Challenge" position = current obstacle is inexperience or recklessness
+
+The SAME card means different things based on WHERE it appears in the spread."""
+
+        # Add user preferences
+        preference_instructions = self.build_preference_instructions(
+            knowledge_level=user_context.knowledge_level,
+            preferred_tone=user_context.preferred_tone,
+            gender=user_context.gender,
+        )
+        if preference_instructions:
+            system_prompt += preference_instructions
+
+        # Add JSON instruction
+        system_prompt += self._build_json_schema_instruction(positions)
+
+        # Build cards context
+        cards_context = self._build_cards_context(cards, positions)
+
+        # Handle empty question
+        if not question or question.strip() == "":
+            question = "What does the universe want me to know today?"
+
+        # Build user prompt
+        user_prompt = f"""The Seeker asks: "{question}"
+
+=== CARDS DRAWN ===
+{cards_context}
+
+=== YOUR TASK ===
+1. Interpret EACH card specifically for its position in the spread
+2. Connect how the cards relate to each other
+3. Answer the seeker's question directly in the synthesis
+4. Stay completely in character with your speaking style
+5. Return ONLY the JSON object, nothing else
+
+Remember: The position defines how to interpret the card!
+- "{positions[0]}" means interpret the first card through that lens
+{f'- "{positions[1]}" means interpret the second card through that lens' if len(positions) > 1 else ''}
+{f'- And so on for all {len(positions)} positions...' if len(positions) > 2 else ''}
+
+Respond with valid JSON only:"""
+
+        # Call OpenAI with JSON mode
+        response = self.client.chat.completions.create(
+            model=self.model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ],
+            max_tokens=1500 if len(positions) > 3 else 800,
+            temperature=0.8,
+            response_format={"type": "json_object"},  # Force JSON output
+        )
+
+        # Parse response
+        response_text = response.choices[0].message.content.strip()
+
+        try:
+            result = json.loads(response_text)
+        except json.JSONDecodeError:
+            # Try to extract JSON from response
+            result = self._extract_json_from_response(response_text, cards, positions)
+
+        # Validate and normalize result
+        return self._validate_spread_result(result, cards, positions, spread_type, character_id)
+
+    def _extract_json_from_response(
+        self,
+        response_text: str,
+        cards: list[TarotCard],
+        positions: list[str],
+    ) -> dict:
+        """Attempt to extract JSON from a response that may have extra text."""
+        import re
+
+        # Try to find JSON object in response
+        json_match = re.search(r'\{[\s\S]*\}', response_text)
+        if json_match:
+            try:
+                return json.loads(json_match.group())
+            except json.JSONDecodeError:
+                pass
+
+        # Return fallback structure
+        return {
+            "cards_analysis": [
+                {
+                    "position_name": pos,
+                    "card_name": card.name,
+                    "orientation": card.orientation,
+                    "interpretation": f"The {card.name} in the {pos} position brings important energy to your reading.",
+                }
+                for card, pos in zip(cards, positions)
+            ],
+            "synthesis": "The cards speak of transformation and insight on your path."
+        }
+
+    def _validate_spread_result(
+        self,
+        result: dict,
+        cards: list[TarotCard],
+        positions: list[str],
+        spread_type: str,
+        character_id: str,
+    ) -> dict:
+        """Validate and normalize the spread reading result."""
+        validated = {
+            "cards_analysis": [],
+            "synthesis": result.get("synthesis", "The cards reveal your path forward."),
+            "spread_type": spread_type,
+            "character_id": character_id,
+        }
+
+        # Validate cards_analysis
+        analysis = result.get("cards_analysis", [])
+        for i, (card, position) in enumerate(zip(cards, positions)):
+            if i < len(analysis) and isinstance(analysis[i], dict):
+                card_analysis = analysis[i]
+                validated["cards_analysis"].append({
+                    "position_name": card_analysis.get("position_name", position),
+                    "card_name": card_analysis.get("card_name", card.name),
+                    "orientation": card_analysis.get("orientation", card.orientation),
+                    "interpretation": card_analysis.get(
+                        "interpretation",
+                        f"The {card.name} appears in the {position} position."
+                    ),
+                })
+            else:
+                # Generate placeholder if missing
+                validated["cards_analysis"].append({
+                    "position_name": position,
+                    "card_name": card.name,
+                    "orientation": card.orientation,
+                    "interpretation": f"The {card.name} ({card.orientation}) in the {position} position speaks to this aspect of your journey.",
+                })
+
+        return validated
+
+    def _generate_fallback_spread_reading(
+        self,
+        cards: list[TarotCard],
+        positions: list[str],
+        spread_type: str,
+        question: str,
+        character_id: str,
+    ) -> dict:
+        """Generate a fallback spread reading when OpenAI is unavailable."""
+        # Character-specific synthesis templates
+        synthesis_templates = {
+            "madame_luna": "Honey, these cards together are telling you something beautiful. {summary} Trust the process, love - your path is unfolding exactly as it should 💕",
+            "shadow": "Okay let's be SO real about what these cards are saying. {summary} The universe isn't subtle here - are you listening?",
+            "elder_weiss": "Child, the cards speak in the language of the ancients. {summary} Like the seasons, your answer will reveal itself in time.",
+            "nova": "The cosmic algorithm just dropped some MAJOR data. {summary} This is literally the download you needed ✨",
+        }
+
+        cards_analysis = []
+        summary_parts = []
+
+        for card, position in zip(cards, positions):
+            card_data = MAJOR_ARCANA_MEANINGS.get(card.name, {})
+            keywords = card_data.get("keywords", ["insight", "change"])
+            meaning_key = "upright" if card.is_upright else "reversed"
+            meaning = card_data.get(meaning_key, "transformation")
+
+            # Build position-specific interpretation
+            interpretation = self._build_fallback_interpretation(
+                card, position, meaning, keywords, character_id
+            )
+
+            cards_analysis.append({
+                "position_name": position,
+                "card_name": card.name,
+                "orientation": card.orientation,
+                "interpretation": interpretation,
+            })
+
+            summary_parts.append(f"{position}: {keywords[0]}")
+
+        # Build synthesis
+        summary = " → ".join(summary_parts)
+        template = synthesis_templates.get(character_id, synthesis_templates["madame_luna"])
+        synthesis = template.format(summary=summary)
+
+        return {
+            "cards_analysis": cards_analysis,
+            "synthesis": synthesis,
+            "spread_type": spread_type,
+            "character_id": character_id,
+        }
+
+    def _build_fallback_interpretation(
+        self,
+        card: TarotCard,
+        position: str,
+        meaning: str,
+        keywords: list[str],
+        character_id: str,
+    ) -> str:
+        """Build a character-specific fallback interpretation for a card position."""
+        templates = {
+            "madame_luna": f"In your {position}, {card.name} {card.orientation.lower()} is all about {keywords[0]}. {meaning.split(',')[0]} - feel into that energy, love.",
+            "shadow": f"{card.name} {card.orientation.lower()} in {position}? This is calling out {keywords[0]}. {meaning.split(',')[0]} - no sugarcoating it.",
+            "elder_weiss": f"The {card.name} appears {card.orientation.lower()} in the {position} position. It speaks of {keywords[0]} - {meaning.split(',')[0]}.",
+            "nova": f"{card.name} {card.orientation.lower()} just dropped in your {position} slot - major {keywords[0]} energy. {meaning.split(',')[0]}.",
+        }
+        return templates.get(character_id, templates["madame_luna"])
+
+    # Legacy single-card method (kept for backwards compatibility)
     async def generate_reading_interpretation(
         self,
         question: str,
@@ -771,3 +1280,114 @@ def get_tarot_service() -> TarotInterpretationService:
     if _tarot_service is None:
         _tarot_service = TarotInterpretationService()
     return _tarot_service
+
+
+# =============================================================================
+# Utility Functions for Spread Management
+# =============================================================================
+
+def get_spread_info(spread_type: str) -> dict:
+    """
+    Get information about a specific spread type.
+
+    Args:
+        spread_type: The spread type identifier
+
+    Returns:
+        Dictionary with name, positions, and description
+    """
+    return SPREAD_CONFIGURATIONS.get(
+        spread_type,
+        SPREAD_CONFIGURATIONS["single_card"]
+    )
+
+
+def get_available_spreads() -> dict[str, dict]:
+    """
+    Get all available spread configurations.
+
+    Returns:
+        Dictionary of all spread configurations keyed by spread_type
+    """
+    return SPREAD_CONFIGURATIONS.copy()
+
+
+def get_spread_positions(spread_type: str) -> list[str]:
+    """
+    Get the position names for a specific spread type.
+
+    Args:
+        spread_type: The spread type identifier
+
+    Returns:
+        List of position names for the spread
+    """
+    spread = SPREAD_CONFIGURATIONS.get(spread_type)
+    if spread:
+        return spread["positions"].copy()
+    return SPREAD_CONFIGURATIONS["single_card"]["positions"].copy()
+
+
+def validate_cards_for_spread(
+    cards: list[dict],
+    spread_type: str
+) -> tuple[bool, str]:
+    """
+    Validate that the provided cards match the spread requirements.
+
+    Args:
+        cards: List of card dictionaries
+        spread_type: The spread type identifier
+
+    Returns:
+        Tuple of (is_valid, error_message)
+    """
+    spread = SPREAD_CONFIGURATIONS.get(spread_type)
+    if not spread:
+        return False, f"Unknown spread type: {spread_type}"
+
+    required_count = len(spread["positions"])
+    actual_count = len(cards)
+
+    if actual_count < required_count:
+        return False, f"{spread_type} requires {required_count} cards, got {actual_count}"
+
+    # Validate each card has required fields
+    for i, card in enumerate(cards):
+        if not isinstance(card, dict):
+            return False, f"Card {i+1} must be a dictionary"
+        if "name" not in card and "card_name" not in card:
+            return False, f"Card {i+1} missing 'name' field"
+
+    return True, ""
+
+
+# =============================================================================
+# Exports
+# =============================================================================
+
+__all__ = [
+    # Service
+    "TarotInterpretationService",
+    "get_tarot_service",
+
+    # Data Classes
+    "TarotCard",
+    "UserContext",
+    "CardAnalysis",
+    "SpreadReading",
+
+    # Configurations
+    "SPREAD_CONFIGURATIONS",
+    "MAJOR_ARCANA_MEANINGS",
+    "CHARACTER_SYSTEM_PROMPTS",
+    "KNOWLEDGE_LEVEL_INSTRUCTIONS",
+    "PREFERRED_TONE_INSTRUCTIONS",
+    "GENDER_PRONOUN_INSTRUCTIONS",
+
+    # Utility Functions
+    "get_spread_info",
+    "get_available_spreads",
+    "get_spread_positions",
+    "validate_cards_for_spread",
+]
