@@ -8,6 +8,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/constants/constants.dart';
 import '../../../../core/services/device_id_service.dart';
 import '../../../../shared/providers/providers.dart';
+import '../../../../shared/providers/user_provider.dart';
+import '../../../chat/presentation/widgets/chat_bubbles.dart';
 import '../../../home/presentation/providers/character_provider.dart';
 import '../../data/services/astrology_api_service.dart';
 
@@ -36,6 +38,10 @@ class _AstroGuideChatWidgetState extends ConsumerState<AstroGuideChatWidget> {
   bool _isLoading = false;
   bool _initialLoadDone = false;
   String? _sessionId;
+  String? _lastProfileId;
+
+  // Free tier limits
+  static const int _freeMessageLimit = 2; // Number of free AI responses allowed
 
   final AstrologyApiService _apiService = AstrologyApiService();
 
@@ -56,7 +62,9 @@ class _AstroGuideChatWidgetState extends ConsumerState<AstroGuideChatWidget> {
   /// Initialize chat session and try to load from Firestore
   Future<void> _initSession() async {
     final deviceId = ref.read(deviceIdProvider);
-    _sessionId = 'session_$deviceId';
+    final profile = ref.read(currentProfileProvider);
+    _sessionId = 'session_${deviceId}_${profile?.id ?? 'default'}';
+    _lastProfileId = profile?.id;
 
     // Try to load existing messages from Firestore
     await _loadFromFirestore();
@@ -64,17 +72,19 @@ class _AstroGuideChatWidgetState extends ConsumerState<AstroGuideChatWidget> {
     setState(() => _initialLoadDone = true);
   }
 
-  /// Try to load messages from Firestore
+  /// Try to load messages from Firestore (profile-specific)
   Future<void> _loadFromFirestore() async {
     final deviceId = ref.read(deviceIdProvider);
+    final profile = ref.read(currentProfileProvider);
+    if (profile == null) return;
 
     try {
       final snapshot = await FirebaseFirestore.instance
           .collection('users')
           .doc(deviceId)
+          .collection('profiles')
+          .doc(profile.id)
           .collection('astro_guide')
-          .doc('metadata')
-          .collection('messages')
           .orderBy('timestamp', descending: false)
           .get();
 
@@ -88,10 +98,11 @@ class _AstroGuideChatWidgetState extends ConsumerState<AstroGuideChatWidget> {
               text: data['content'] as String? ?? '',
               isUser: data['role'] == 'user',
               timestamp: _parseTimestamp(data['timestamp']),
+              isPremiumTeaser: data['is_premium_teaser'] as bool? ?? false,
             ));
           }
         });
-        debugPrint('[AstroChat] Loaded ${snapshot.docs.length} messages from Firestore');
+        debugPrint('[AstroChat] Loaded ${snapshot.docs.length} messages for ${profile.name}');
       }
     } catch (e) {
       debugPrint('[AstroChat] Could not load from Firestore: $e');
@@ -112,6 +123,60 @@ class _AstroGuideChatWidgetState extends ConsumerState<AstroGuideChatWidget> {
       }
     }
     return DateTime.now();
+  }
+
+  /// Save a message to Firestore (profile-specific)
+  Future<String?> _saveMessageToFirestore(_AstroChatMessage message) async {
+    final deviceId = ref.read(deviceIdProvider);
+    final profile = ref.read(currentProfileProvider);
+    if (profile == null) return null;
+
+    try {
+      final docRef = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(deviceId)
+          .collection('profiles')
+          .doc(profile.id)
+          .collection('astro_guide')
+          .add({
+        'content': message.text,
+        'role': message.isUser ? 'user' : 'assistant',
+        'timestamp': FieldValue.serverTimestamp(),
+        'is_premium_teaser': message.isPremiumTeaser,
+      });
+
+      debugPrint('[AstroChat] Saved message to Firestore: ${docRef.id}');
+      return docRef.id;
+    } catch (e) {
+      debugPrint('[AstroChat] Failed to save message: $e');
+      return null;
+    }
+  }
+
+  /// Clear all messages from Firestore for current profile
+  Future<void> _clearFirestoreMessages() async {
+    final deviceId = ref.read(deviceIdProvider);
+    final profile = ref.read(currentProfileProvider);
+    if (profile == null) return;
+
+    try {
+      final collection = FirebaseFirestore.instance
+          .collection('users')
+          .doc(deviceId)
+          .collection('profiles')
+          .doc(profile.id)
+          .collection('astro_guide');
+
+      final snapshot = await collection.get();
+      final batch = FirebaseFirestore.instance.batch();
+      for (final doc in snapshot.docs) {
+        batch.delete(doc.reference);
+      }
+      await batch.commit();
+      debugPrint('[AstroChat] Cleared ${snapshot.docs.length} messages from Firestore');
+    } catch (e) {
+      debugPrint('[AstroChat] Failed to clear Firestore messages: $e');
+    }
   }
 
   /// Get character-specific welcome message
@@ -163,6 +228,9 @@ class _AstroGuideChatWidgetState extends ConsumerState<AstroGuideChatWidget> {
       _isLoading = true;
     });
 
+    // Clear messages from Firestore as well
+    await _clearFirestoreMessages();
+
     try {
       _sessionId = await _apiService.startNewChatSession(userId: deviceId);
     } catch (e) {
@@ -173,6 +241,11 @@ class _AstroGuideChatWidgetState extends ConsumerState<AstroGuideChatWidget> {
     HapticFeedback.mediumImpact();
   }
 
+  /// Count how many AI responses the user has received
+  int get _aiResponseCount {
+    return _localMessages.where((m) => !m.isUser && !m.isPremiumTeaser).length;
+  }
+
   Future<void> _sendMessage() async {
     final message = _messageController.text.trim();
     if (message.isEmpty || _isLoading) return;
@@ -181,6 +254,11 @@ class _AstroGuideChatWidgetState extends ConsumerState<AstroGuideChatWidget> {
     HapticFeedback.lightImpact();
     _messageController.clear();
     _focusNode.unfocus();
+
+    final isPremium = ref.read(isPremiumProvider);
+
+    // Check if free user has exceeded message limit
+    final hasExceededLimit = !isPremium && _aiResponseCount >= _freeMessageLimit;
 
     // Add user message immediately (optimistic UI)
     final userMessage = _AstroChatMessage(
@@ -194,17 +272,46 @@ class _AstroGuideChatWidgetState extends ConsumerState<AstroGuideChatWidget> {
       _isLoading = true;
     });
 
+    // Save user message to Firestore
+    _saveMessageToFirestore(userMessage);
+
     // Scroll to show user message
     WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
 
-    // Get user data for API call
-    final user = ref.read(userProvider);
+    // If free user exceeded limit, show teaser instead of calling API
+    if (hasExceededLimit) {
+      await Future.delayed(const Duration(milliseconds: 800)); // Simulate thinking
+
+      final character = ref.read(selectedCharacterProvider);
+      final teaserText = _getCharacterTeaser(character.id);
+
+      final teaserMessage = _AstroChatMessage(
+        text: teaserText,
+        isUser: false,
+        timestamp: DateTime.now(),
+        isPremiumTeaser: true,
+      );
+
+      setState(() {
+        _localMessages.add(teaserMessage);
+        _isLoading = false;
+      });
+
+      // Save teaser message to Firestore
+      _saveMessageToFirestore(teaserMessage);
+
+      WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
+      return;
+    }
+
+    // Get current profile data for API call
+    final profile = ref.read(currentProfileProvider);
     final deviceId = ref.read(deviceIdProvider);
 
-    // Try to use backend API if user has birth data
-    if (user.birthDate != null && user.birthLatitude != null) {
+    // Try to use backend API if profile has birth data
+    if (profile?.birthDate != null && profile?.birthLatitude != null) {
       try {
-        final birthDate = user.birthDate!;
+        final birthDate = profile!.birthDate!;
         final selectedCharacterId = ref.read(selectedCharacterIdProvider);
 
         // Call the Astro-Guide chat API
@@ -213,11 +320,11 @@ class _AstroGuideChatWidgetState extends ConsumerState<AstroGuideChatWidget> {
           sessionId: _sessionId!,
           message: message,
           birthDate: birthDate,
-          birthTime: user.birthTime ?? '12:00',
-          birthLatitude: user.birthLatitude!,
-          birthLongitude: user.birthLongitude ?? 0.0,
-          birthTimezone: user.birthTimezone ?? 'UTC',
-          name: user.name,
+          birthTime: profile.birthTime ?? '12:00',
+          birthLatitude: profile.birthLatitude!,
+          birthLongitude: profile.birthLongitude ?? 0.0,
+          birthTimezone: profile.birthTimezone ?? 'UTC',
+          name: profile.name,
           characterId: selectedCharacterId,
         );
 
@@ -236,6 +343,9 @@ class _AstroGuideChatWidgetState extends ConsumerState<AstroGuideChatWidget> {
           _localMessages.add(aiMessage);
           _isLoading = false;
         });
+
+        // Save AI response to Firestore
+        _saveMessageToFirestore(aiMessage);
 
         // Scroll to show AI response
         WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
@@ -276,11 +386,44 @@ class _AstroGuideChatWidgetState extends ConsumerState<AstroGuideChatWidget> {
     }
   }
 
+  /// Get character-specific teaser text for premium upsell
+  String _getCharacterTeaser(String characterId) {
+    switch (characterId) {
+      case 'madame_luna':
+        return 'I can see the alignment regarding your question, but I need a deeper connection to reveal the details...';
+      case 'elder_weiss':
+        return 'The ancient scrolls hold the answer you seek, but such wisdom requires a sacred bond...';
+      case 'nova':
+        return 'Deeper cosmic data requires elevated access protocols. Upgrade to unlock full analysis...';
+      case 'shadow':
+        return 'I know what the cards say about this. But you\'ll need to prove your commitment to hear it...';
+      default:
+        return 'I can see the alignment regarding your question, but I need a deeper connection to reveal the details...';
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final user = ref.watch(userProvider);
+    final currentProfile = ref.watch(currentProfileProvider);
 
-    if (user.sunSign == null) {
+    // Reload when profile changes
+    if (currentProfile?.id != _lastProfileId && _initialLoadDone) {
+      _lastProfileId = currentProfile?.id;
+      final deviceId = ref.read(deviceIdProvider);
+      _sessionId = 'session_${deviceId}_${currentProfile?.id ?? 'default'}';
+      // Clear and reload messages for new profile
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        setState(() {
+          _localMessages.clear();
+          _initialLoadDone = false;
+        });
+        _loadFromFirestore().then((_) {
+          setState(() => _initialLoadDone = true);
+        });
+      });
+    }
+
+    if (currentProfile?.sunSign == null) {
       return _buildNoBirthDataState();
     }
 
@@ -348,8 +491,8 @@ class _AstroGuideChatWidgetState extends ConsumerState<AstroGuideChatWidget> {
   }
 
   Widget _buildWelcomeState() {
-    final user = ref.read(userProvider);
-    final sunSign = user.sunSign ?? 'cosmic traveler';
+    final profile = ref.read(currentProfileProvider);
+    final sunSign = profile?.sunSign ?? 'cosmic traveler';
     final character = ref.read(selectedCharacterProvider);
     final welcomeText = _getCharacterWelcome(character.id, character.name, sunSign);
 
@@ -439,6 +582,20 @@ class _AstroGuideChatWidgetState extends ConsumerState<AstroGuideChatWidget> {
   }
 
   Widget _buildMessageBubble(_AstroChatMessage message, int index) {
+    // Show PremiumTeaserMessage for teaser messages
+    if (message.isPremiumTeaser) {
+      final character = ref.read(selectedCharacterProvider);
+      return PremiumTeaserMessage(
+        teaserText: message.text,
+        characterName: character.name,
+        themeColor: AppColors.mysticTeal,
+        onPremiumUnlocked: () {
+          // Refresh the chat after premium unlock
+          setState(() {});
+        },
+      );
+    }
+
     return Padding(
       padding: EdgeInsets.only(
         bottom: AppConstants.spacingSmall,
@@ -717,12 +874,14 @@ class _AstroChatMessage {
   final String text;
   final bool isUser;
   final DateTime timestamp;
+  final bool isPremiumTeaser;
 
   _AstroChatMessage({
     this.id,
     required this.text,
     required this.isUser,
     required this.timestamp,
+    this.isPremiumTeaser = false,
   });
 }
 

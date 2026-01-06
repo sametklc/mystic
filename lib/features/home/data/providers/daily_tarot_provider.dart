@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../../core/services/device_id_service.dart';
 import '../../../../core/utils/mystic_date_utils.dart';
+import '../../../../shared/providers/user_provider.dart';
 import '../../../tarot/data/services/tarot_api_service.dart';
 import '../../../tarot/data/providers/tarot_provider.dart';
 
@@ -137,30 +138,38 @@ class DailyTarotState {
 /// Notifier for managing daily tarot state with Firestore persistence.
 ///
 /// Uses the "Mystic Day" concept where day resets at 7 AM.
+/// Each profile has its own daily reading.
 class DailyTarotNotifier extends StateNotifier<DailyTarotState> {
   final TarotApiService _apiService;
   final String _deviceId;
+  final String? _profileId;
   final FirebaseFirestore _firestore;
 
-  DailyTarotNotifier(this._apiService, this._deviceId)
+  DailyTarotNotifier(this._apiService, this._deviceId, this._profileId)
       : _firestore = FirebaseFirestore.instance,
         super(const DailyTarotState()) {
     // Check Firestore on initialization
     _checkExistingReading();
   }
 
-  /// Get the Firestore document reference for today's reading
+  /// Get the Firestore document reference for today's reading (profile-specific)
   DocumentReference get _todayDocRef {
     final mysticDate = getMysticDateString();
+    final profileId = _profileId ?? 'default';
     return _firestore
         .collection('users')
         .doc(_deviceId)
+        .collection('profiles')
+        .doc(profileId)
         .collection('daily_tarot')
         .doc(mysticDate);
   }
 
-  /// Get SharedPreferences key for today (local cache backup)
-  String get _todayKey => '$_dailyReadingKeyPrefix${getMysticDateString()}';
+  /// Get SharedPreferences key for today (local cache backup, profile-specific)
+  String get _todayKey {
+    final profileId = _profileId ?? 'default';
+    return '$_dailyReadingKeyPrefix${profileId}_${getMysticDateString()}';
+  }
 
   /// Check if we have an existing reading for the current Mystic Day
   Future<void> _checkExistingReading() async {
@@ -424,9 +433,13 @@ class DailyTarotNotifier extends StateNotifier<DailyTarotState> {
 }
 
 /// Main provider for daily tarot state.
+/// Automatically resets when profile changes.
 final dailyTarotProvider =
     StateNotifierProvider<DailyTarotNotifier, DailyTarotState>((ref) {
   final apiService = ref.watch(tarotApiServiceProvider);
   final deviceId = ref.watch(deviceIdProvider);
-  return DailyTarotNotifier(apiService, deviceId);
+  final profile = ref.watch(currentProfileProvider);
+
+  // This will recreate the notifier when profile changes
+  return DailyTarotNotifier(apiService, deviceId, profile?.id);
 });

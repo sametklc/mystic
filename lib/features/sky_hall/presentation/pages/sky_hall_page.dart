@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
@@ -6,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/constants/constants.dart';
 import '../../../../shared/providers/providers.dart';
 import '../../../../shared/widgets/widgets.dart';
+import '../../../paywall/paywall.dart';
 import '../../data/providers/sky_hall_provider.dart';
 import '../widgets/natal_chart_painter.dart';
 import '../widgets/planet_info_card.dart';
@@ -24,6 +26,7 @@ class _SkyHallPageState extends ConsumerState<SkyHallPage>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
   int? _expandedPlanetIndex;
+  String? _lastProfileId;
 
   @override
   void initState() {
@@ -44,23 +47,36 @@ class _SkyHallPageState extends ConsumerState<SkyHallPage>
   }
 
   void _loadNatalChart() {
-    final user = ref.read(userProvider);
-    if (user.birthDate != null && user.birthLatitude != null) {
+    // Use current profile data (changes based on selected profile)
+    final profile = ref.read(currentProfileProvider);
+    if (profile?.birthDate != null && profile?.birthLatitude != null) {
       ref.read(natalChartProvider.notifier).calculateChart(
-            date: user.birthDate!,
-            time: user.birthTime ?? '12:00',
-            latitude: user.birthLatitude!,
-            longitude: user.birthLongitude ?? 0,
-            timezone: user.birthTimezone ?? 'UTC',
-            name: user.name,
+            date: profile!.birthDate!,
+            time: profile.birthTime ?? '12:00',
+            latitude: profile.birthLatitude!,
+            longitude: profile.birthLongitude ?? 0,
+            timezone: profile.birthTimezone ?? 'UTC',
+            name: profile.name,
           );
+    } else {
+      // Clear chart if no birth data
+      ref.read(natalChartProvider.notifier).clearChart();
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final chartState = ref.watch(natalChartProvider);
-    final userName = ref.watch(userNameProvider);
+    final currentProfile = ref.watch(currentProfileProvider);
+    final userName = currentProfile?.name ?? 'Seeker';
+
+    // Reload chart when profile changes
+    if (currentProfile?.id != _lastProfileId) {
+      _lastProfileId = currentProfile?.id;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _loadNatalChart();
+      });
+    }
 
     return MysticBackgroundScaffold(
       child: SafeArea(
@@ -68,7 +84,7 @@ class _SkyHallPageState extends ConsumerState<SkyHallPage>
         child: Column(
           children: [
             // Header
-            _buildHeader(userName ?? 'Seeker'),
+            _buildHeader(userName),
 
             // Tab Bar (Trinity Tabs)
             _buildTrinityTabBar(),
@@ -259,6 +275,13 @@ class _SkyHallPageState extends ConsumerState<SkyHallPage>
   }
 
   Widget _buildChartTab(NatalChartState chartState) {
+    // Check premium status first
+    final isPremium = ref.watch(isPremiumProvider);
+
+    if (!isPremium) {
+      return _buildLockedChartState();
+    }
+
     if (chartState.isLoading) {
       return _buildLoadingState();
     }
@@ -493,4 +516,245 @@ class _SkyHallPageState extends ConsumerState<SkyHallPage>
       ),
     );
   }
+
+  /// Locked state widget for non-premium users
+  Widget _buildLockedChartState() {
+    const goldAccent = Color(0xFFFFD700);
+    const goldDark = Color(0xFFB8860B);
+
+    return Stack(
+      children: [
+        // Blurred zodiac wheel background
+        Positioned.fill(
+          child: ClipRect(
+            child: ImageFiltered(
+              imageFilter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+              child: Opacity(
+                opacity: 0.4,
+                child: Center(
+                  child: Container(
+                    width: MediaQuery.of(context).size.width - 40,
+                    height: MediaQuery.of(context).size.width - 40,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: RadialGradient(
+                        colors: [
+                          AppColors.mysticTeal.withOpacity(0.3),
+                          AppColors.primary.withOpacity(0.2),
+                          Colors.transparent,
+                        ],
+                        stops: const [0.2, 0.6, 1.0],
+                      ),
+                    ),
+                    child: CustomPaint(
+                      painter: _ZodiacWheelPainter(),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+
+        // Centered content
+        Center(
+          child: Padding(
+            padding: const EdgeInsets.all(AppConstants.spacingLarge),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                // Glowing lock icon with gold color
+                Container(
+                  width: 100,
+                  height: 100,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: RadialGradient(
+                      colors: [
+                        goldAccent.withOpacity(0.3),
+                        goldAccent.withOpacity(0.1),
+                        Colors.transparent,
+                      ],
+                      stops: const [0.3, 0.6, 1.0],
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: goldAccent.withOpacity(0.4),
+                        blurRadius: 30,
+                        spreadRadius: 5,
+                      ),
+                    ],
+                  ),
+                  child: Center(
+                    child: ShaderMask(
+                      shaderCallback: (bounds) => LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          goldAccent,
+                          goldDark,
+                        ],
+                      ).createShader(bounds),
+                      child: const Icon(
+                        Icons.lock_rounded,
+                        size: 56,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                ).animate().fadeIn(duration: 600.ms).scale(
+                      begin: const Offset(0.8, 0.8),
+                      end: const Offset(1.0, 1.0),
+                      curve: Curves.easeOutBack,
+                    ),
+
+                const SizedBox(height: AppConstants.spacingLarge),
+
+                // Headline
+                ShaderMask(
+                  shaderCallback: (bounds) => LinearGradient(
+                    colors: [
+                      goldAccent,
+                      goldDark,
+                      goldAccent,
+                    ],
+                  ).createShader(bounds),
+                  child: Text(
+                    'Discover Your Soul\'s Blueprint',
+                    style: AppTypography.headlineSmall.copyWith(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ).animate().fadeIn(delay: 200.ms, duration: 500.ms),
+
+                const SizedBox(height: AppConstants.spacingMedium),
+
+                // Subtext
+                Text(
+                  'Unlock the secrets written in the stars at the moment of your birth. Your natal chart reveals your cosmic DNA—personality traits, life purpose, and hidden potentials.',
+                  style: AppTypography.bodyMedium.copyWith(
+                    color: AppColors.textSecondary,
+                    height: 1.6,
+                  ),
+                  textAlign: TextAlign.center,
+                ).animate().fadeIn(delay: 300.ms, duration: 500.ms),
+
+                const SizedBox(height: AppConstants.spacingXLarge),
+
+                // CTA Button - "Reveal My Chart"
+                GestureDetector(
+                  onTap: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => PaywallView(
+                          onClose: () => Navigator.of(context).pop(),
+                        ),
+                      ),
+                    );
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 32,
+                      vertical: 16,
+                    ),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF1A1025),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: goldAccent.withOpacity(0.5),
+                        width: 1.5,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: goldAccent.withOpacity(0.2),
+                          blurRadius: 15,
+                          spreadRadius: 0,
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        ShaderMask(
+                          shaderCallback: (bounds) => LinearGradient(
+                            colors: [goldAccent, goldDark],
+                          ).createShader(bounds),
+                          child: const Icon(
+                            Icons.auto_awesome,
+                            color: Colors.white,
+                            size: 20,
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        ShaderMask(
+                          shaderCallback: (bounds) => LinearGradient(
+                            colors: [goldAccent, goldDark],
+                          ).createShader(bounds),
+                          child: Text(
+                            'Reveal My Chart',
+                            style: AppTypography.labelLarge.copyWith(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w600,
+                              letterSpacing: 0.5,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ).animate().fadeIn(delay: 400.ms, duration: 500.ms).slideY(
+                      begin: 0.2,
+                      end: 0,
+                      curve: Curves.easeOut,
+                    ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Custom painter for a simple zodiac wheel silhouette
+class _ZodiacWheelPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = Offset(size.width / 2, size.height / 2);
+    final radius = size.width / 2;
+
+    // Outer ring
+    final outerPaint = Paint()
+      ..color = AppColors.mysticTeal.withOpacity(0.3)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2;
+
+    canvas.drawCircle(center, radius * 0.95, outerPaint);
+    canvas.drawCircle(center, radius * 0.75, outerPaint);
+    canvas.drawCircle(center, radius * 0.55, outerPaint);
+
+    // Division lines (12 zodiac sections)
+    final linePaint = Paint()
+      ..color = AppColors.mysticTeal.withOpacity(0.2)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1;
+
+    for (int i = 0; i < 12; i++) {
+      final angle = (i * 30) * math.pi / 180;
+      final startPoint = Offset(
+        center.dx + radius * 0.55 * math.cos(angle),
+        center.dy + radius * 0.55 * math.sin(angle),
+      );
+      final endPoint = Offset(
+        center.dx + radius * 0.95 * math.cos(angle),
+        center.dy + radius * 0.95 * math.sin(angle),
+      );
+      canvas.drawLine(startPoint, endPoint, linePaint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

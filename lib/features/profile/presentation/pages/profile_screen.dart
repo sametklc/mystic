@@ -8,8 +8,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/constants/constants.dart';
 import '../../../../core/services/device_id_service.dart';
 import '../../../../core/services/profile_image_service.dart';
-import '../../../../core/services/user_firestore_service.dart';
+import '../../../../shared/models/models.dart';
 import '../../../../shared/providers/providers.dart';
+import '../../../../shared/services/astrology_service.dart';
 import '../../../../shared/widgets/widgets.dart';
 
 /// Profile screen for viewing and editing user data.
@@ -167,21 +168,19 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         return;
       }
 
-      // Upload to Firebase Storage
+      // Upload to Firebase Storage with profile-specific path
       final deviceId = ref.read(deviceIdProvider);
+      final currentProfile = ref.read(currentProfileProvider);
       final downloadUrl = await profileService.uploadProfileImage(
         deviceId,
         imageFile,
+        profileId: currentProfile?.id,
       );
 
       if (downloadUrl != null) {
-        // Update Firestore
-        final firestoreService = ref.read(userFirestoreServiceProvider);
-        await firestoreService.updateUserFields(deviceId, {
-          'profileImageUrl': downloadUrl,
-        });
-
-        // Update local state
+        // Update local state (this also saves to Firestore via _saveToFirestore)
+        // The setProfileImageUrl method updates the current profile's imageUrl
+        // and persists the entire UserModel including all profiles
         ref.read(userProvider.notifier).setProfileImageUrl(downloadUrl);
 
         if (mounted) {
@@ -224,13 +223,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     setState(() => _isSaving = true);
 
     try {
-      final deviceId = ref.read(deviceIdProvider);
-      final firestoreService = ref.read(userFirestoreServiceProvider);
-
-      await firestoreService.updateUserFields(deviceId, {
-        'name': newName,
-      });
-
+      // Update local state (this also saves to Firestore via _saveToFirestore)
+      // The setName method updates the current profile's name
+      // and persists the entire UserModel including all profiles
       ref.read(userProvider.notifier).setName(newName);
 
       if (mounted) {
@@ -286,14 +281,29 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     ),
                     const SizedBox(height: 24),
 
-                    // Cosmic Origin Section (Birth Data)
+                    // Cosmic Origin Section (Birth Data) - Editable
                     _buildSection(
                       title: 'Cosmic Origin',
                       icon: Icons.auto_awesome,
                       children: [
-                        _buildInfoRow('Birth Date', user.birthDate ?? 'Not set'),
-                        _buildInfoRow('Birth Time', user.birthTime ?? '12:00'),
-                        _buildInfoRow('Birth Place', user.birthCity ?? 'Not set'),
+                        _buildEditableInfoRow(
+                          'Birth Date',
+                          user.birthDate ?? 'Not set',
+                          Icons.calendar_today,
+                          () => _showDatePicker(user.birthDate),
+                        ),
+                        _buildEditableInfoRow(
+                          'Birth Time',
+                          user.birthTime ?? '12:00',
+                          Icons.access_time,
+                          () => _showTimePicker(user.birthTime),
+                        ),
+                        _buildEditableInfoRow(
+                          'Birth Place',
+                          user.birthCity ?? 'Not set',
+                          Icons.location_on,
+                          _showLocationPicker,
+                        ),
                         const SizedBox(height: 12),
                         _buildSignsRow(user),
                       ],
@@ -616,6 +626,292 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     );
   }
 
+  Widget _buildEditableInfoRow(
+    String label,
+    String value,
+    IconData icon,
+    VoidCallback onTap,
+  ) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            color: Colors.black.withOpacity(0.15),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: AppColors.glassBorder.withOpacity(0.5)),
+          ),
+          child: Row(
+            children: [
+              Icon(icon, color: AppColors.textTertiary, size: 18),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      label,
+                      style: AppTypography.labelSmall.copyWith(
+                        color: AppColors.textTertiary,
+                        fontSize: 10,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      value,
+                      style: AppTypography.bodyMedium.copyWith(
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(
+                Icons.edit,
+                color: AppColors.primary.withOpacity(0.7),
+                size: 16,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showDatePicker(String? currentDate) async {
+    HapticFeedback.selectionClick();
+
+    // Parse current date if available (format: YYYY-MM-DD)
+    DateTime initialDate = DateTime(1990);
+    if (currentDate != null && currentDate.isNotEmpty && currentDate != 'Not set') {
+      try {
+        final parts = currentDate.split('-');
+        if (parts.length == 3) {
+          initialDate = DateTime(
+            int.parse(parts[0]),
+            int.parse(parts[1]),
+            int.parse(parts[2]),
+          );
+        }
+      } catch (_) {}
+    }
+
+    final date = await showDatePicker(
+      context: context,
+      initialDate: initialDate,
+      firstDate: DateTime(1920),
+      lastDate: DateTime.now(),
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: ColorScheme.dark(
+              primary: AppColors.primary,
+              surface: AppColors.surface,
+            ),
+          ),
+          child: child!,
+        );
+      },
+    );
+
+    if (date != null && mounted) {
+      await _updateBirthData(newDate: date);
+    }
+  }
+
+  Future<void> _showTimePicker(String? currentTime) async {
+    HapticFeedback.selectionClick();
+
+    // Parse current time if available (format: HH:MM)
+    TimeOfDay initialTime = const TimeOfDay(hour: 12, minute: 0);
+    if (currentTime != null && currentTime.isNotEmpty) {
+      try {
+        final parts = currentTime.split(':');
+        if (parts.length >= 2) {
+          initialTime = TimeOfDay(
+            hour: int.parse(parts[0]),
+            minute: int.parse(parts[1]),
+          );
+        }
+      } catch (_) {}
+    }
+
+    final time = await showTimePicker(
+      context: context,
+      initialTime: initialTime,
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: ColorScheme.dark(
+              primary: AppColors.primary,
+              surface: AppColors.surface,
+            ),
+          ),
+          child: child!,
+        );
+      },
+    );
+
+    if (time != null && mounted) {
+      await _updateBirthData(newTime: time);
+    }
+  }
+
+  void _showLocationPicker() {
+    HapticFeedback.selectionClick();
+    final user = ref.read(userProvider);
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (context) => Padding(
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.of(context).viewInsets.bottom,
+        ),
+        child: Container(
+          margin: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: AppColors.surface,
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: AppColors.glassBorder),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: AppColors.textTertiary,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(height: 20),
+              Text(
+                'Update Birth Location',
+                style: AppTypography.titleSmall.copyWith(
+                  color: AppColors.textPrimary,
+                ),
+              ),
+              const SizedBox(height: 24),
+              MysticLocationSearchField(
+                initialValue: user.birthCity,
+                initialLatitude: user.birthLatitude,
+                initialLongitude: user.birthLongitude,
+                onLocationSelected: (lat, lng, placeName, timezone) async {
+                  Navigator.pop(context);
+                  await _updateBirthData(
+                    newLatitude: lat,
+                    newLongitude: lng,
+                    newCity: placeName,
+                    newTimezone: timezone,
+                  );
+                },
+              ),
+              const SizedBox(height: 16),
+              SafeArea(
+                child: TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: Text(
+                    'Cancel',
+                    style: AppTypography.bodyMedium.copyWith(
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Update birth data and recalculate signs
+  Future<void> _updateBirthData({
+    DateTime? newDate,
+    TimeOfDay? newTime,
+    double? newLatitude,
+    double? newLongitude,
+    String? newCity,
+    String? newTimezone,
+  }) async {
+    final user = ref.read(userProvider);
+
+    // Get current values or use new ones
+    String dateStr;
+    if (newDate != null) {
+      dateStr = '${newDate.year}-${newDate.month.toString().padLeft(2, '0')}-${newDate.day.toString().padLeft(2, '0')}';
+    } else {
+      dateStr = user.birthDate ?? '';
+    }
+
+    String timeStr;
+    if (newTime != null) {
+      timeStr = '${newTime.hour.toString().padLeft(2, '0')}:${newTime.minute.toString().padLeft(2, '0')}';
+    } else {
+      timeStr = user.birthTime ?? '12:00';
+    }
+
+    final latitude = newLatitude ?? user.birthLatitude ?? 0.0;
+    final longitude = newLongitude ?? user.birthLongitude ?? 0.0;
+    final city = newCity ?? user.birthCity;
+    final timezone = newTimezone ?? user.birthTimezone ?? 'UTC';
+
+    // Save birth data
+    ref.read(userProvider.notifier).setBirthData(
+      date: dateStr,
+      time: timeStr,
+      latitude: latitude,
+      longitude: longitude,
+      city: city,
+      timezone: timezone,
+    );
+
+    // Recalculate signs if we have a valid date
+    if (dateStr.isNotEmpty) {
+      try {
+        final parts = dateStr.split('-');
+        if (parts.length == 3) {
+          final birthDateTime = DateTime(
+            int.parse(parts[0]),
+            int.parse(parts[1]),
+            int.parse(parts[2]),
+          );
+
+          final birthData = BirthDataModel(
+            birthDate: birthDateTime,
+            birthTime: null,
+            birthLocation: city,
+          );
+
+          final profile = await AstrologyService.calculateProfile(birthData);
+
+          ref.read(userProvider.notifier).setSigns(
+            sunSign: profile.sunSign.name,
+            risingSign: profile.ascendantSign.name,
+            moonSign: profile.moonSign.name,
+          );
+        }
+      } catch (e) {
+        debugPrint('Error recalculating signs: $e');
+      }
+    }
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Birth data updated!'),
+          backgroundColor: AppColors.mysticTeal,
+        ),
+      );
+    }
+  }
+
   Widget _buildSignsRow(user) {
     return Container(
       padding: const EdgeInsets.all(12),
@@ -713,14 +1009,16 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     switch (status) {
       case 'single':
         return 'Single';
-      case 'dating':
-        return 'Dating';
-      case 'committed':
+      case 'inRelationship':
         return 'In a Relationship';
-      case 'married':
-        return 'Married';
       case 'complicated':
         return "It's Complicated";
+      case 'married':
+        return 'Married';
+      case 'healing':
+        return 'Healing';
+      case 'seeking':
+        return 'Seeking Love';
       default:
         return status;
     }
@@ -755,17 +1053,17 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   String _formatIntention(String intention) {
     switch (intention) {
       case 'love':
-        return 'Love';
+        return 'Love & Relationships';
       case 'career':
-        return 'Career';
-      case 'spirituality':
-        return 'Spirituality';
-      case 'self_discovery':
-        return 'Self Discovery';
-      case 'guidance':
-        return 'Guidance';
+        return 'Career & Purpose';
+      case 'shadowWork':
+        return 'Shadow Work';
+      case 'future':
+        return 'Future Insights';
+      case 'dailyGuidance':
+        return 'Daily Guidance';
       case 'healing':
-        return 'Healing';
+        return 'Healing & Growth';
       default:
         return intention;
     }

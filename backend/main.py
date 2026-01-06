@@ -82,6 +82,11 @@ async def lifespan(app: FastAPI):
         from services.astro_chat_service import init_astro_chat_service
         init_astro_chat_service(app.state.db)
         print("AstroChatService initialized with Firestore")
+
+        # Initialize IOSChatService with Firestore
+        from services.ios_chat_service import init_ios_chat_service
+        init_ios_chat_service(app.state.db)
+        print("IOSChatService initialized with Firestore")
     else:
         app.state.db = None
         print("Firebase not configured - running in mock mode")
@@ -1407,6 +1412,206 @@ async def tts_health_check():
     return {
         "configured": service.is_configured,
         "available_characters": list(CHARACTER_VOICE_MAP.keys()),
+    }
+
+
+# =============================================================================
+# iOS Chat Endpoint (Conversational AI for App Store Compliance)
+# =============================================================================
+
+from services.ios_chat_service import get_ios_chat_service
+
+
+class IOSChatRequest(BaseModel):
+    """Request model for iOS conversational chat."""
+    user_id: str = Field(..., description="User's unique identifier")
+    message: str = Field(..., min_length=1, max_length=2000, description="User's message")
+    character_id: str = Field(default="madame_luna", description="AI persona: madame_luna, elder_weiss, nova, shadow")
+    conversation_history: Optional[list] = Field(
+        default=None,
+        description="Previous messages [{text, is_user}, ...]"
+    )
+    # Optional user context for personalized features
+    birth_date: Optional[str] = Field(default=None, description="Birth date YYYY-MM-DD")
+    birth_time: Optional[str] = Field(default=None, description="Birth time HH:MM")
+    birth_latitude: Optional[float] = Field(default=None, description="Birth location latitude")
+    birth_longitude: Optional[float] = Field(default=None, description="Birth location longitude")
+    birth_timezone: Optional[str] = Field(default=None, description="Birth location timezone")
+    name: Optional[str] = Field(default=None, description="User's name")
+    sun_sign: Optional[str] = Field(default=None, description="User's sun sign (cached)")
+    moon_sign: Optional[str] = Field(default=None, description="User's moon sign (cached)")
+    rising_sign: Optional[str] = Field(default=None, description="User's rising sign (cached)")
+
+
+class IOSChatResponse(BaseModel):
+    """Response model for iOS conversational chat."""
+    success: bool
+    response: str
+    intent: str  # greeting, tarot_single, tarot_spread, horoscope, astrology_chat, general_guidance
+    character_id: str
+    character_name: str
+    # Optional data based on intent
+    card_drawn: Optional[dict] = None  # For tarot_single
+    spread_reading: Optional[dict] = None  # For tarot_spread
+    needs_birth_data: bool = False  # True if astrology features need birth data
+    error: Optional[str] = None
+
+
+@app.post("/ios/chat", response_model=IOSChatResponse)
+async def ios_chat(request: IOSChatRequest):
+    """
+    iOS Conversational Chat Endpoint.
+
+    This endpoint provides a natural conversational interface for iOS users,
+    designed for App Store compliance by presenting AI features as "guidance"
+    rather than "fortune-telling".
+
+    The service:
+    1. Classifies user intent from natural language
+    2. Routes to appropriate business logic (tarot, horoscope, chat)
+    3. Wraps results in conversational, guidance-focused responses
+
+    Supported intents:
+    - greeting: Welcome messages
+    - tarot_single: Single card draw with interpretation
+    - tarot_spread: Three card spread
+    - horoscope: Daily/personal horoscope
+    - astrology_chat: Birth chart discussion
+    - general_guidance: Life advice and emotional support
+
+    Character personas:
+    - madame_luna (Luna): Spiritual Wellness Guide
+    - elder_weiss (Elder): Life & Career Mentor
+    - nova (Nova): Personal Insight Analyst
+    - shadow (Shadow): Honest Life Coach
+    """
+    try:
+        ios_service = get_ios_chat_service()
+
+        # Build user context from request
+        user_context = None
+        if request.birth_date or request.sun_sign:
+            user_context = {
+                "birth_date": request.birth_date,
+                "birth_time": request.birth_time,
+                "birth_latitude": request.birth_latitude,
+                "birth_longitude": request.birth_longitude,
+                "birth_timezone": request.birth_timezone,
+                "name": request.name,
+                "sun_sign": request.sun_sign,
+                "moon_sign": request.moon_sign,
+                "rising_sign": request.rising_sign,
+            }
+
+            # Calculate chart if we have full birth data but no cached signs
+            if (request.birth_date and request.birth_latitude and
+                not request.sun_sign):
+                try:
+                    natal_chart = AstrologyService.calculate_natal_chart(
+                        date=request.birth_date,
+                        time=request.birth_time or "12:00",
+                        latitude=request.birth_latitude,
+                        longitude=request.birth_longitude,
+                        timezone=request.birth_timezone or "UTC",
+                        name=request.name or "Seeker"
+                    )
+                    user_context["sun_sign"] = natal_chart.get("sun", {}).get("sign", "Unknown")
+                    user_context["moon_sign"] = natal_chart.get("moon", {}).get("sign", "Unknown")
+                    user_context["rising_sign"] = natal_chart.get("rising", {}).get("sign", "Unknown")
+                    user_context["venus_sign"] = natal_chart.get("venus", {}).get("sign", "Unknown")
+                    user_context["mars_sign"] = natal_chart.get("mars", {}).get("sign", "Unknown")
+                    user_context["mercury_sign"] = natal_chart.get("mercury", {}).get("sign", "Unknown")
+                except Exception as e:
+                    print(f"[iOS Chat] Failed to calculate natal chart: {e}")
+
+        # Generate response
+        result = await ios_service.chat(
+            user_id=request.user_id,
+            message=request.message,
+            character_id=request.character_id,
+            conversation_history=request.conversation_history,
+            user_context=user_context,
+        )
+
+        return IOSChatResponse(
+            success=result.get("success", True),
+            response=result.get("response", "I'm here to help. What's on your mind?"),
+            intent=result.get("intent", "general_guidance"),
+            character_id=result.get("character_id", request.character_id),
+            character_name=result.get("character_name", "Luna"),
+            card_drawn=result.get("card_drawn"),
+            spread_reading=result.get("spread_reading"),
+            needs_birth_data=result.get("needs_birth_data", False),
+            error=None,
+        )
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return IOSChatResponse(
+            success=False,
+            response="I'm having trouble connecting right now. Let's try again.",
+            intent="error",
+            character_id=request.character_id,
+            character_name="Guide",
+            error=str(e),
+        )
+
+
+@app.get("/ios/characters")
+async def get_ios_characters():
+    """
+    Get available AI personas for iOS.
+
+    Returns character information formatted for iOS UI
+    (using guidance-focused terminology).
+    """
+    return {
+        "characters": [
+            {
+                "id": "madame_luna",
+                "name": "Luna",
+                "role": "Spiritual Wellness Guide",
+                "description": "Specializes in emotional wellness, relationships, and personal growth. Luna offers compassionate guidance for matters of the heart.",
+                "theme_color": "#9D00FF",
+                "is_premium": False,
+            },
+            {
+                "id": "elder_weiss",
+                "name": "Elder",
+                "role": "Life & Career Mentor",
+                "description": "An experienced mentor offering wisdom on career decisions, life transitions, and finding your true purpose.",
+                "theme_color": "#FFD700",
+                "is_premium": False,
+            },
+            {
+                "id": "nova",
+                "name": "Nova",
+                "role": "Personal Insight Analyst",
+                "description": "A modern analytical guide who combines logical thinking with intuitive insights to help you understand patterns in your life.",
+                "theme_color": "#00FFFF",
+                "is_premium": False,
+            },
+            {
+                "id": "shadow",
+                "name": "Shadow",
+                "role": "Honest Life Coach",
+                "description": "A direct and honest coach who helps you face difficult truths and overcome obstacles with tough love.",
+                "theme_color": "#FF0033",
+                "is_premium": False,
+            },
+        ]
+    }
+
+
+@app.get("/ios/health")
+async def ios_health_check():
+    """Health check for iOS chat service."""
+    ios_service = get_ios_chat_service()
+    return {
+        "status": "healthy",
+        "configured": ios_service.is_configured,
+        "features": ["tarot", "horoscope", "astrology_chat", "general_guidance"],
     }
 
 

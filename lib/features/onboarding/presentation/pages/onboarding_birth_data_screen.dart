@@ -128,11 +128,12 @@ class _OnboardingBirthDataScreenState
       timezone: _birthTimezone ?? 'UTC',
     );
 
-    // Save signs if profile was calculated
+    // Save signs if profile was calculated (including moon sign)
     if (_profile != null) {
       ref.read(userProvider.notifier).setSigns(
         sunSign: _profile!.sunSign.name,
         risingSign: _profile!.ascendantSign.name,
+        moonSign: _profile!.moonSign.name,
       );
     }
   }

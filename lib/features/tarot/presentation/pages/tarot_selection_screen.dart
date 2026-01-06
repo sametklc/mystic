@@ -327,48 +327,75 @@ class _TarotSelectionScreenState extends ConsumerState<TarotSelectionScreen>
   }
 
   Widget _buildHeader() {
+    // Tab mode - single line centered
+    if (widget.isTabMode) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+        child: Center(
+          child: Text(
+            'ASK THE ORACLE',
+            style: AppTypography.headlineLarge.copyWith(
+              color: AppColors.primary,
+              letterSpacing: 3,
+              fontSize: 22,
+            ),
+          )
+              .animate(controller: _headerController)
+              .fadeIn(duration: 800.ms)
+              .shimmer(
+                duration: 2000.ms,
+                color: AppColors.primaryLight.withOpacity(0.3),
+              ),
+        ),
+      );
+    }
+
+    // Non-tab mode - back button aligned with ASK text
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+      padding: const EdgeInsets.only(left: 16, right: 24, top: 8, bottom: 12),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Back button - only show if not in tab mode
-          if (!widget.isTabMode)
-            IconButton(
+          // Back button - top left, aligned with first line
+          Padding(
+            padding: const EdgeInsets.only(top: 2),
+            child: IconButton(
               onPressed: () => Navigator.of(context).pop(),
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(),
               icon: const Icon(
                 Icons.arrow_back_ios_new,
                 color: AppColors.textSecondary,
-                size: 20,
+                size: 18,
               ),
             ),
-          if (!widget.isTabMode) const Spacer(),
-          // Title - centered for tab mode
-          if (widget.isTabMode)
-            Expanded(
-              child: Center(
-                child: Text(
-                  'ASK THE ORACLE',
-                  style: AppTypography.headlineLarge.copyWith(
+          ),
+
+          // Title - centered in remaining space
+          Expanded(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'ASK',
+                  style: GoogleFonts.cinzel(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w400,
                     color: AppColors.primary,
-                    letterSpacing: 3,
-                    fontSize: 22,
+                    letterSpacing: 6,
                   ),
-                )
-                    .animate(controller: _headerController)
-                    .fadeIn(duration: 800.ms)
-                    .shimmer(
-                      duration: 2000.ms,
-                      color: AppColors.primaryLight.withOpacity(0.3),
-                    ),
-              ),
-            )
-          else
-            Text(
-              'TAROT',
-              style: AppTypography.headlineLarge.copyWith(
-                color: AppColors.primary,
-                letterSpacing: 4,
-              ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'THE ORACLE',
+                  style: GoogleFonts.cinzel(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w400,
+                    color: AppColors.primary,
+                    letterSpacing: 6,
+                  ),
+                ),
+              ],
             )
                 .animate(controller: _headerController)
                 .fadeIn(duration: 800.ms)
@@ -376,8 +403,10 @@ class _TarotSelectionScreenState extends ConsumerState<TarotSelectionScreen>
                   duration: 2000.ms,
                   color: AppColors.primaryLight.withOpacity(0.3),
                 ),
-          if (!widget.isTabMode) const Spacer(),
-          if (!widget.isTabMode) const SizedBox(width: 48),
+          ),
+
+          // Spacer to balance the back button
+          const SizedBox(width: 18),
         ],
       ),
     );

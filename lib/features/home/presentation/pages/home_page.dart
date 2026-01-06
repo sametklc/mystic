@@ -5,8 +5,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/constants/constants.dart';
 import '../../../../shared/providers/providers.dart';
+import '../../../../shared/widgets/profile_switcher_dialog.dart';
 import '../../../../shared/widgets/widgets.dart';
 import '../../../profile/presentation/pages/profile_screen.dart';
+import '../../../shop/shop.dart';
 import '../../../sky_hall/data/providers/sky_hall_provider.dart';
 import '../widgets/character_carousel.dart';
 import '../widgets/cosmic_insight_card.dart';
@@ -191,22 +193,28 @@ class _HomePageState extends ConsumerState<HomePage> {
     final displayName = userName ?? 'Seeker';
     final user = ref.watch(userProvider);
 
-    return GestureDetector(
-      onTap: () {
-        HapticFeedback.lightImpact();
-        Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (context) => const ProfileScreen(),
-          ),
-        );
-      },
-      child: Row(
-        children: [
-          // Profile Avatar
-          _buildProfileAvatar(user),
-          const SizedBox(width: 12),
-          // Welcome Text
-          Column(
+    return Row(
+      children: [
+        // Profile Avatar - Opens profile switcher dialog
+        GestureDetector(
+          onTap: () {
+            HapticFeedback.lightImpact();
+            ProfileSwitcherDialog.show(context);
+          },
+          child: _buildProfileAvatar(user),
+        ),
+        const SizedBox(width: 12),
+        // Welcome Text - Opens profile screen
+        GestureDetector(
+          onTap: () {
+            HapticFeedback.lightImpact();
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (context) => const ProfileScreen(),
+              ),
+            );
+          },
+          child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
@@ -225,8 +233,8 @@ class _HomePageState extends ConsumerState<HomePage> {
               ),
             ],
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
@@ -328,40 +336,52 @@ class _HomePageState extends ConsumerState<HomePage> {
   }
 
   Widget _buildCoinBalance() {
-    return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: AppConstants.spacingSmall,
-        vertical: AppConstants.spacingXSmall,
-      ),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(AppConstants.borderRadiusRound),
-        gradient: LinearGradient(
-          colors: [
-            AppColors.primary.withOpacity(0.2),
-            AppColors.primary.withOpacity(0.1),
+    final gems = ref.watch(gemsProvider);
+
+    return GestureDetector(
+      onTap: () {
+        HapticFeedback.lightImpact();
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => const DiamondShopScreen(),
+          ),
+        );
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppConstants.spacingSmall,
+          vertical: AppConstants.spacingXSmall,
+        ),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(AppConstants.borderRadiusRound),
+          gradient: LinearGradient(
+            colors: [
+              AppColors.primary.withOpacity(0.2),
+              AppColors.primary.withOpacity(0.1),
+            ],
+          ),
+          border: Border.all(
+            color: AppColors.primary.withOpacity(0.3),
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              '💎',
+              style: TextStyle(fontSize: 12),
+            ),
+            const SizedBox(width: AppConstants.spacingXSmall),
+            Text(
+              '$gems',
+              style: AppTypography.labelMedium.copyWith(
+                color: AppColors.primary,
+                fontWeight: FontWeight.bold,
+                fontSize: 12,
+              ),
+            ),
           ],
         ),
-        border: Border.all(
-          color: AppColors.primary.withOpacity(0.3),
-        ),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Text(
-            '\u{1F48E}',
-            style: TextStyle(fontSize: 12),
-          ),
-          const SizedBox(width: AppConstants.spacingXSmall),
-          Text(
-            '100',
-            style: AppTypography.labelMedium.copyWith(
-              color: AppColors.primary,
-              fontWeight: FontWeight.bold,
-              fontSize: 12,
-            ),
-          ),
-        ],
       ),
     );
   }

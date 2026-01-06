@@ -38,7 +38,7 @@ class ReadingPersistenceService {
     await _firestoreService.ensureUserExists(userId);
     print('[ReadingPersistence] Step 1: Done');
 
-    // Step 2: Save reading to Firestore (initially without image URL)
+    // Step 2: Save reading to Firestore (with temporary image URL for immediate display)
     print('[ReadingPersistence] Step 2: Saving reading to Firestore...');
     final readingId = await _firestoreService.saveReading(
       userId: userId,
@@ -46,7 +46,8 @@ class ReadingPersistenceService {
       cardName: cardName,
       isUpright: isUpright,
       interpretation: interpretation,
-      imageUrl: null, // Will be updated after upload
+      imageUrl: null, // Will be updated with permanent URL after upload
+      temporaryImageUrl: temporaryImageUrl, // Save temporary URL immediately
       moonPhase: moonPhase,
       characterId: characterId,
     );

@@ -56,16 +56,22 @@ class ProfileImageService {
 
   /// Upload profile image to Firebase Storage.
   /// Returns the download URL on success, null on failure.
-  Future<String?> uploadProfileImage(String userId, File imageFile) async {
+  /// Now supports multi-profile with unique paths per profile.
+  Future<String?> uploadProfileImage(String userId, File imageFile, {String? profileId}) async {
     try {
-      // Create reference: users/{userId}/profile.jpg
-      final ref = _storage.ref().child('users/$userId/profile.jpg');
+      // Create reference: users/{userId}/profiles/{profileId}/profile.jpg
+      // If no profileId provided, use legacy path for backwards compatibility
+      final path = profileId != null
+          ? 'users/$userId/profiles/$profileId/profile.jpg'
+          : 'users/$userId/profile.jpg';
+      final ref = _storage.ref().child(path);
 
       // Upload with metadata
       final metadata = SettableMetadata(
         contentType: 'image/jpeg',
         customMetadata: {
           'uploadedAt': DateTime.now().toIso8601String(),
+          'profileId': profileId ?? 'main',
         },
       );
 
@@ -77,7 +83,7 @@ class ProfileImageService {
 
       // Get download URL
       final downloadUrl = await snapshot.ref.getDownloadURL();
-      debugPrint('Profile image uploaded successfully: $downloadUrl');
+      debugPrint('Profile image uploaded successfully for profile $profileId: $downloadUrl');
 
       return downloadUrl;
     } on FirebaseException catch (e) {
@@ -90,11 +96,14 @@ class ProfileImageService {
   }
 
   /// Delete profile image from Firebase Storage.
-  Future<bool> deleteProfileImage(String userId) async {
+  Future<bool> deleteProfileImage(String userId, {String? profileId}) async {
     try {
-      final ref = _storage.ref().child('users/$userId/profile.jpg');
+      final path = profileId != null
+          ? 'users/$userId/profiles/$profileId/profile.jpg'
+          : 'users/$userId/profile.jpg';
+      final ref = _storage.ref().child(path);
       await ref.delete();
-      debugPrint('Profile image deleted successfully');
+      debugPrint('Profile image deleted successfully for profile $profileId');
       return true;
     } on FirebaseException catch (e) {
       // Object not found is okay - image might not exist

@@ -54,7 +54,7 @@ class MysticLocationSearchField extends StatefulWidget {
 }
 
 class _MysticLocationSearchFieldState extends State<MysticLocationSearchField>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   final TextEditingController _controller = TextEditingController();
   final FocusNode _focusNode = FocusNode();
   final LayerLink _layerLink = LayerLink();
@@ -71,6 +71,9 @@ class _MysticLocationSearchFieldState extends State<MysticLocationSearchField>
   @override
   void initState() {
     super.initState();
+    // Register for keyboard/metrics changes
+    WidgetsBinding.instance.addObserver(this);
+
     _glowController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1500),
@@ -87,12 +90,22 @@ class _MysticLocationSearchFieldState extends State<MysticLocationSearchField>
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _controller.dispose();
     _focusNode.dispose();
     _glowController.dispose();
     _locationService.dispose();
     _removeOverlay();
     super.dispose();
+  }
+
+  @override
+  void didChangeMetrics() {
+    // Called when keyboard appears/disappears
+    // Rebuild overlay to reposition suggestions
+    if (_showSuggestions && _overlayEntry != null) {
+      _overlayEntry?.markNeedsBuild();
+    }
   }
 
   void _onFocusChange() {
@@ -176,31 +189,53 @@ class _MysticLocationSearchFieldState extends State<MysticLocationSearchField>
   }
 
   OverlayEntry _createOverlayEntry() {
-    final renderBox = context.findRenderObject() as RenderBox;
-    final size = renderBox.size;
-
     return OverlayEntry(
-      builder: (context) => Positioned(
-        width: size.width,
-        child: CompositedTransformFollower(
-          link: _layerLink,
-          showWhenUnlinked: false,
-          offset: Offset(0, size.height + 4),
-          child: Material(
-            color: Colors.transparent,
-            child: _buildSuggestionsList(),
+      builder: (overlayContext) {
+        // Calculate position inside builder so it updates with keyboard changes
+        final renderBox = context.findRenderObject() as RenderBox?;
+        if (renderBox == null || !renderBox.attached) {
+          return const SizedBox.shrink();
+        }
+
+        final size = renderBox.size;
+        final position = renderBox.localToGlobal(Offset.zero);
+
+        // Get screen height and keyboard height from the main context
+        final mediaQuery = MediaQuery.of(context);
+        final screenHeight = mediaQuery.size.height;
+        final keyboardHeight = mediaQuery.viewInsets.bottom;
+        final availableSpaceBelow = screenHeight - position.dy - size.height - keyboardHeight - 20;
+
+        // If not enough space below (keyboard open), show above the text field
+        const suggestionsHeight = 250.0;
+        final showAbove = availableSpaceBelow < suggestionsHeight && keyboardHeight > 50;
+
+        return Positioned(
+          width: size.width,
+          child: CompositedTransformFollower(
+            link: _layerLink,
+            showWhenUnlinked: false,
+            // If showing above, offset by negative (suggestions height + gap)
+            // If showing below, offset by field height + gap
+            offset: showAbove
+                ? Offset(0, -(suggestionsHeight + 4))
+                : Offset(0, size.height + 4),
+            child: Material(
+              color: Colors.transparent,
+              child: _buildSuggestionsList(showAbove: showAbove),
+            ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 
-  Widget _buildSuggestionsList() {
+  Widget _buildSuggestionsList({bool showAbove = false}) {
     if (_suggestions.isEmpty && !_isLoading) {
       return const SizedBox.shrink();
     }
 
-    return Container(
+    final content = Container(
       constraints: const BoxConstraints(maxHeight: 250),
       decoration: BoxDecoration(
         color: AppColors.backgroundSecondary,
@@ -218,6 +253,8 @@ class _MysticLocationSearchFieldState extends State<MysticLocationSearchField>
         borderRadius: BorderRadius.circular(AppConstants.borderRadiusMedium),
         child: Column(
           mainAxisSize: MainAxisSize.min,
+          // Reverse order when showing above so newest items are at bottom (closer to input)
+          verticalDirection: showAbove ? VerticalDirection.up : VerticalDirection.down,
           children: [
             // Loading indicator
             if (_isLoading)
@@ -251,6 +288,7 @@ class _MysticLocationSearchFieldState extends State<MysticLocationSearchField>
                 child: ListView.builder(
                   shrinkWrap: true,
                   padding: EdgeInsets.zero,
+                  reverse: showAbove, // Reverse scroll when showing above
                   itemCount: _suggestions.length,
                   itemBuilder: (context, index) {
                     final suggestion = _suggestions[index];
@@ -262,6 +300,17 @@ class _MysticLocationSearchFieldState extends State<MysticLocationSearchField>
         ),
       ),
     );
+
+    // When showing above, align to bottom of the available space
+    if (showAbove) {
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: [content],
+      );
+    }
+
+    return content;
   }
 
   Widget _buildSuggestionTile(LocationSuggestion suggestion, int index) {
@@ -404,6 +453,8 @@ class _MysticLocationSearchFieldState extends State<MysticLocationSearchField>
                   ),
                   textInputAction: TextInputAction.done,
                   onChanged: _onSearchChanged,
+                  // Push the field higher when keyboard opens to leave room for suggestions
+                  scrollPadding: const EdgeInsets.only(bottom: 280),
                   decoration: InputDecoration(
                     hintText: widget.placeholder,
                     hintStyle: AppTypography.bodyLarge.copyWith(

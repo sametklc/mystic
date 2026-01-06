@@ -50,35 +50,47 @@ class _LoveMatchScreenState extends ConsumerState<LoveMatchScreen> {
       );
     }
 
+    // Calculate dynamic bottom padding for keyboard
+    final keyboardHeight = MediaQuery.of(context).viewInsets.bottom;
+    final bottomPadding = keyboardHeight > 0
+        ? keyboardHeight + 280 // Extra space for autocomplete suggestions
+        : AppConstants.spacingLarge;
+
     return GestureDetector(
       onTap: _dismissKeyboard,
       behavior: HitTestBehavior.opaque,
       child: SingleChildScrollView(
-      padding: const EdgeInsets.all(AppConstants.spacingMedium),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Your Profile Summary
-          _buildYourProfileCard(),
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+        padding: EdgeInsets.only(
+          top: AppConstants.spacingMedium,
+          left: AppConstants.spacingMedium,
+          right: AppConstants.spacingMedium,
+          bottom: bottomPadding,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Your Profile Summary
+            _buildYourProfileCard(),
 
-          const SizedBox(height: AppConstants.spacingLarge),
+            const SizedBox(height: AppConstants.spacingLarge),
 
-          // Partner Input Form
-          _buildPartnerForm(),
+            // Partner Input Form
+            _buildPartnerForm(),
 
-          const SizedBox(height: AppConstants.spacingLarge),
+            const SizedBox(height: AppConstants.spacingLarge),
 
-          // Calculate Button
-          _buildCalculateButton(synastryState.isLoading),
+            // Calculate Button
+            _buildCalculateButton(synastryState.isLoading),
 
-          if (synastryState.hasError) ...[
+            if (synastryState.hasError) ...[
+              const SizedBox(height: AppConstants.spacingMedium),
+              _buildErrorMessage(synastryState.error!),
+            ],
+
             const SizedBox(height: AppConstants.spacingMedium),
-            _buildErrorMessage(synastryState.error!),
           ],
-
-          const SizedBox(height: AppConstants.spacingLarge),
-        ],
-      ),
+        ),
       ),
     );
   }

@@ -68,11 +68,11 @@ class _OnboardingRevealScreenState extends ConsumerState<OnboardingRevealScreen>
     if (!mounted) return;
     setState(() => _showWheel = true);
 
-    // Calculate profile from saved birth data
-    final user = ref.read(userProvider);
-    if (user.birthDate != null && user.birthLatitude != null) {
+    // Calculate profile from saved birth data (use editing profile for add profile mode)
+    final editingProfile = ref.read(editingProfileProvider);
+    if (editingProfile?.birthDate != null && editingProfile?.birthLatitude != null) {
       // Parse the date
-      final dateParts = user.birthDate!.split('-');
+      final dateParts = editingProfile!.birthDate!.split('-');
       final birthDate = DateTime(
         int.parse(dateParts[0]),
         int.parse(dateParts[1]),
@@ -81,8 +81,8 @@ class _OnboardingRevealScreenState extends ConsumerState<OnboardingRevealScreen>
 
       // Parse time if available
       DateTime? birthTime;
-      if (user.birthTime != null) {
-        final timeParts = user.birthTime!.split(':');
+      if (editingProfile.birthTime != null) {
+        final timeParts = editingProfile.birthTime!.split(':');
         birthTime = DateTime(
           birthDate.year,
           birthDate.month,
@@ -95,7 +95,7 @@ class _OnboardingRevealScreenState extends ConsumerState<OnboardingRevealScreen>
       final birthData = BirthDataModel(
         birthDate: birthDate,
         birthTime: birthTime,
-        birthLocation: user.birthCity,
+        birthLocation: editingProfile.birthCity,
       );
 
       _profile = await AstrologyService.calculateProfile(birthData);
@@ -131,7 +131,8 @@ class _OnboardingRevealScreenState extends ConsumerState<OnboardingRevealScreen>
 
   @override
   Widget build(BuildContext context) {
-    final userName = ref.watch(userProvider).name ?? 'Seeker';
+    // Use editing profile name (for add profile mode) or current profile name
+    final userName = ref.watch(editingProfileNameProvider) ?? 'Seeker';
     final screenWidth = MediaQuery.of(context).size.width;
     final screenHeight = MediaQuery.of(context).size.height;
 

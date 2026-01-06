@@ -6,6 +6,7 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_typography.dart';
+import '../../../../shared/providers/user_provider.dart';
 import '../../../../shared/widgets/mystic_background/mystic_background_scaffold.dart';
 import '../../data/providers/chat_provider.dart';
 import '../widgets/chat_bubbles.dart';
@@ -45,9 +46,15 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
 
     _character = CharacterInfo.fromId(widget.characterId);
 
+    // Get current profile for personalized chat
+    final profile = ref.read(currentProfileProvider);
+
     _chatParams = ChatParams(
       characterId: widget.characterId,
       readingContext: widget.initialInterpretation,
+      profileId: profile?.id,
+      profileName: profile?.name,
+      profileSunSign: profile?.sunSign,
     );
 
     _glowController = AnimationController(

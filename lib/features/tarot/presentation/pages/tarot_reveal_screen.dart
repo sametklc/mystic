@@ -1,16 +1,21 @@
+import 'dart:math' as math;
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_typography.dart';
-import '../../../../core/services/audio_player_service.dart';
-import '../../../../core/services/tts_service.dart';
+import '../../../../core/services/firestore_reading_service.dart';
+import '../../../../core/services/device_id_service.dart';
+import '../../../../shared/providers/user_provider.dart';
 import '../../../../shared/widgets/mystic_background/mystic_background_scaffold.dart';
-import '../../../../shared/widgets/mystic_audio_player/mystic_audio_player.dart';
 import '../../../chat/presentation/pages/chat_screen.dart';
+import '../../../paywall/paywall.dart';
 import '../../data/providers/tarot_provider.dart';
 import '../../data/services/tarot_api_service.dart';
 import '../../data/tarot_deck_assets.dart';
@@ -57,13 +62,15 @@ class _TarotRevealScreenState extends ConsumerState<TarotRevealScreen>
   // Animation controllers
   late AnimationController _pulseController;
   late AnimationController _revealController;
+  late AnimationController _flipController;
+  late Animation<double> _flipAnimation;
 
   // State
-  bool _isRevealed = false;
+  bool _isRevealed = false; // Card flipped
+  bool _showPaywallOverlay = false; // Show paywall on card
   bool _showInterpretation = false;
   bool _apiCallStarted = false;
-  bool _ttsAvailable = false;
-  bool _showListenButton = false;
+  bool _savedToGrimoire = false; // Track if saved to Grimoire
 
   // Mystical loading messages
   static const List<String> _loadingMessages = [
@@ -89,31 +96,34 @@ class _TarotRevealScreenState extends ConsumerState<TarotRevealScreen>
       duration: const Duration(milliseconds: 800),
     );
 
+    // Flip animation - controlled programmatically
+    _flipController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1000),
+    );
+
+    _flipAnimation = Tween<double>(begin: 0, end: 1).animate(
+      CurvedAnimation(parent: _flipController, curve: Curves.easeInOutBack),
+    );
+
+    _flipController.addStatusListener((status) {
+      if (status == AnimationStatus.completed) {
+        _onRevealComplete();
+      }
+    });
+
     // Start the API call
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _startReading();
-      _checkTtsAvailability();
     });
-  }
-
-  Future<void> _checkTtsAvailability() async {
-    try {
-      final ttsService = ref.read(ttsServiceProvider);
-      final available = await ttsService.isAvailable();
-      if (mounted) {
-        setState(() {
-          _ttsAvailable = available;
-        });
-      }
-    } catch (e) {
-      // Silently fail - TTS is optional
-      debugPrint('TTS availability check failed: $e');
-    }
   }
 
   void _startReading() {
     if (_apiCallStarted) return;
     _apiCallStarted = true;
+
+    // Ask The Oracle is FREE - no gem cost required
+    // visionaryMode just controls AI image generation, doesn't cost gems for this feature
 
     ref.read(tarotReadingProvider.notifier).generateReading(
           userId: 'user_${DateTime.now().millisecondsSinceEpoch}', // TODO: Use real user ID
@@ -133,41 +143,95 @@ class _TarotRevealScreenState extends ConsumerState<TarotRevealScreen>
         setState(() {
           _showInterpretation = true;
         });
-
-        // Show listen button after interpretation starts appearing
-        // (delay based on typical interpretation length)
-        Future.delayed(const Duration(milliseconds: 2500), () {
-          if (mounted && _ttsAvailable) {
-            setState(() {
-              _showListenButton = true;
-            });
-          }
-        });
+        // Save to Grimoire after interpretation is shown
+        _saveToGrimoire();
       }
     });
+  }
+
+  /// Save the reading to Grimoire (Firestore) automatically
+  Future<void> _saveToGrimoire() async {
+    if (_savedToGrimoire) return; // Already saved
+
+    final readingState = ref.read(tarotReadingProvider);
+    final reading = readingState.reading;
+    if (reading == null) return;
+
+    try {
+      final deviceId = ref.read(deviceIdProvider);
+      final firestoreService = ref.read(firestoreReadingServiceProvider);
+
+      await firestoreService.saveReading(
+        userId: deviceId,
+        question: widget.question.isEmpty ? 'General reading' : widget.question,
+        cardName: reading.primaryCard?.name ?? widget.cardName,
+        isUpright: reading.primaryCard?.isUpright ?? widget.isUpright,
+        interpretation: reading.interpretation,
+        imageUrl: widget.visionaryMode ? reading.imageUrl : null,
+        characterId: widget.characterId,
+      );
+
+      _savedToGrimoire = true;
+      debugPrint('✨ Reading saved to Grimoire');
+    } catch (e) {
+      debugPrint('❌ Failed to save to Grimoire: $e');
+    }
   }
 
   @override
   void dispose() {
     _pulseController.dispose();
     _revealController.dispose();
+    _flipController.dispose();
     super.dispose();
+  }
+
+  void _onCardTap() {
+    // Only handle paywall navigation
+    if (_showPaywallOverlay) {
+      debugPrint('🎴 Card tapped - navigating to paywall');
+      _navigateToPaywall();
+    }
+  }
+
+  void _navigateToPaywall() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => PaywallView(
+          onClose: () {
+            Navigator.of(context).pop();
+            // Check if user is now premium after returning
+            final isPremium = ref.read(isPremiumProvider);
+            if (isPremium && mounted) {
+              debugPrint('🎴 User is now premium! Removing blur and overlay...');
+              setState(() {
+                _showPaywallOverlay = false; // Remove blur and overlay
+              });
+            }
+          },
+        ),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final readingState = ref.watch(tarotReadingProvider);
 
-    // Listen for state changes
+    // Listen for state changes - flip card when reading is ready
     ref.listen<TarotReadingState>(tarotReadingProvider, (previous, next) {
       if (next.hasReading && !_isRevealed) {
-        // Reading received - trigger reveal after a brief pause
-        Future.delayed(const Duration(milliseconds: 800), () {
-          if (mounted) {
+        debugPrint('🎴 Reading received! Flipping card...');
+        Future.delayed(const Duration(milliseconds: 500), () {
+          if (mounted && !_isRevealed) {
             HapticFeedback.heavyImpact();
+
+            // Ask The Oracle is FREE for everyone - no premium check needed
             setState(() {
               _isRevealed = true;
+              _showPaywallOverlay = false; // Always free for Ask The Oracle
             });
+            _flipController.forward();
           }
         });
       }
@@ -279,40 +343,215 @@ class _TarotRevealScreenState extends ConsumerState<TarotRevealScreen>
     // Also used as fallback if AI image fails to load
     final assetPath = TarotDeckAssets.getCardByName(cardName);
 
-    return AnimatedBuilder(
-      animation: _pulseController,
-      builder: (context, child) {
-        final pulseValue = _pulseController.value;
+    // Only show loading if API is still in progress AND visionary mode is on
+    final isImageLoading = widget.visionaryMode && state.isLoading;
 
-        // Only show loading if API is still in progress AND visionary mode is on
-        final isImageLoading = widget.visionaryMode && state.isLoading;
+    return GestureDetector(
+      onTap: _onCardTap,
+      behavior: HitTestBehavior.opaque,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          // The flip card - wrapped in AbsorbPointer
+          AbsorbPointer(
+            absorbing: true,
+            child: AnimatedBuilder(
+              animation: Listenable.merge([_pulseController, _flipAnimation]),
+              builder: (context, child) {
+                final pulseValue = _pulseController.value;
+                final flipAngle = _flipAnimation.value * math.pi;
+                final showBack = flipAngle <= math.pi / 2;
 
-        return FlipCard(
-          showFront: _isRevealed,
-          duration: const Duration(milliseconds: 1000),
-          onFlipComplete: _onRevealComplete,
-          back: TarotCardBackLarge(
-            glowIntensity: state.isLoading ? pulseValue : 0.3,
-            width: 200,
-            height: 340,
-          ),
-          front: TarotCardFrontLarge(
-            // Use network image only in Visionary Mode
-            imageUrl: widget.visionaryMode ? reading?.imageUrl : null,
-            // Always provide asset path as fallback
-            assetPath: assetPath,
-            cardName: cardName,
-            isUpright: primaryCard?.isUpright ?? true,
-            isLoading: isImageLoading,
-            width: 200,
-            height: 340,
-          ),
-        );
-      },
+                // Calculate glow intensity based on loading state
+                double glowIntensity;
+                if (state.isLoading) {
+                  glowIntensity = pulseValue;
+                } else {
+                  glowIntensity = 0.3;
+                }
+
+                return Container(
+                  width: 200,
+                  height: 340,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(16),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.5),
+                        blurRadius: 20,
+                        offset: const Offset(0, 10),
+                      ),
+                      BoxShadow(
+                        color: AppColors.primary.withValues(alpha: 0.2 + glowIntensity * 0.3),
+                        blurRadius: 30 + glowIntensity * 20,
+                        spreadRadius: 5 + glowIntensity * 5,
+                      ),
+                    ],
+                  ),
+                    child: Transform(
+                      alignment: Alignment.center,
+                      transform: Matrix4.identity()
+                        ..setEntry(3, 2, 0.001) // Perspective
+                        ..rotateY(flipAngle),
+                      child: showBack
+                          ? TarotCardBackLarge(
+                              glowIntensity: glowIntensity,
+                              width: 200,
+                              height: 340,
+                            )
+                          : Transform(
+                              alignment: Alignment.center,
+                              transform: Matrix4.identity()..rotateY(math.pi),
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(16),
+                                child: Stack(
+                                  children: [
+                                    // Card front - BLURRED if paywall showing
+                                    ImageFiltered(
+                                      imageFilter: _showPaywallOverlay
+                                          ? ImageFilter.blur(sigmaX: 15, sigmaY: 15)
+                                          : ImageFilter.blur(sigmaX: 0, sigmaY: 0),
+                                      child: TarotCardFrontLarge(
+                                        imageUrl: widget.visionaryMode ? reading?.imageUrl : null,
+                                        assetPath: assetPath,
+                                        cardName: cardName,
+                                        isUpright: primaryCard?.isUpright ?? true,
+                                        isLoading: isImageLoading,
+                                        width: 200,
+                                        height: 340,
+                                      ),
+                                    ),
+                                    // Paywall overlay ON the card front
+                                    if (_showPaywallOverlay) _buildCardPaywallOverlay(),
+                                  ],
+                                ),
+                              ),
+                            ),
+                    ),
+                  );
+                },
+              ),
+            ),
+
+          ],
+        ),
     )
         .animate()
         .fadeIn(duration: 600.ms)
         .scale(begin: const Offset(0.8, 0.8), end: const Offset(1, 1), duration: 600.ms);
+  }
+
+  /// Paywall overlay that appears ON the card front (blurred image behind)
+  Widget _buildCardPaywallOverlay() {
+    const goldAccent = Color(0xFFFFD700);
+    const goldDark = Color(0xFFB8860B);
+
+    return Positioned.fill(
+      child: GestureDetector(
+        onTap: _navigateToPaywall,
+        child: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                Colors.black.withValues(alpha: 0.5),
+                Colors.black.withValues(alpha: 0.7),
+              ],
+            ),
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              // Lock icon with glow
+              Container(
+                width: 70,
+                height: 70,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: goldAccent.withValues(alpha: 0.5),
+                      blurRadius: 25,
+                      spreadRadius: 8,
+                    ),
+                  ],
+                ),
+                child: ShaderMask(
+                  shaderCallback: (bounds) => const LinearGradient(
+                    colors: [goldAccent, goldDark],
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                  ).createShader(bounds),
+                  child: const Icon(
+                    Icons.lock_rounded,
+                    size: 50,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 20),
+              Text(
+                'The cards vibrate\nwith energy...',
+                style: AppTypography.bodyMedium.copyWith(
+                  color: Colors.white,
+                  fontStyle: FontStyle.italic,
+                  height: 1.5,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 24),
+              // Unlock button
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1A1025),
+                  borderRadius: BorderRadius.circular(25),
+                  border: Border.all(
+                    color: goldAccent.withValues(alpha: 0.6),
+                    width: 1.5,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: goldAccent.withValues(alpha: 0.25),
+                      blurRadius: 15,
+                    ),
+                  ],
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    ShaderMask(
+                      shaderCallback: (bounds) => const LinearGradient(
+                        colors: [goldAccent, goldDark],
+                      ).createShader(bounds),
+                      child: const Icon(
+                        Icons.auto_awesome,
+                        size: 18,
+                        color: Colors.white,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    ShaderMask(
+                      shaderCallback: (bounds) => const LinearGradient(
+                        colors: [goldAccent, goldDark],
+                      ).createShader(bounds),
+                      child: Text(
+                        'Reveal Destiny',
+                        style: AppTypography.labelLarge.copyWith(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   Widget _buildBottomContent(TarotReadingState state) {
@@ -460,7 +699,7 @@ class _TarotRevealScreenState extends ConsumerState<TarotRevealScreen>
 
             const SizedBox(height: 24),
 
-            // Interpretation with typewriter effect
+            // Interpretation - Full text for everyone (Ask The Oracle is FREE)
             if (reading?.interpretation != null)
               TypewriterRichText(
                 text: reading!.interpretation,
@@ -472,21 +711,6 @@ class _TarotRevealScreenState extends ConsumerState<TarotRevealScreen>
                 characterDelay: const Duration(milliseconds: 25),
                 initialDelay: const Duration(milliseconds: 500),
               ),
-
-            const SizedBox(height: 24),
-
-            // Listen button (only shown if TTS is available)
-            if (_showListenButton && reading?.interpretation != null)
-              ListenButton(
-                text: reading!.interpretation,
-                characterId: widget.characterId,
-                onPlayStart: () {
-                  HapticFeedback.lightImpact();
-                },
-              )
-                  .animate()
-                  .fadeIn(duration: 400.ms)
-                  .scale(begin: const Offset(0.9, 0.9), end: const Offset(1, 1)),
 
             const SizedBox(height: 24),
 
@@ -503,7 +727,7 @@ class _TarotRevealScreenState extends ConsumerState<TarotRevealScreen>
 
     return Column(
       children: [
-        // Chat with Oracle button (Primary CTA)
+        // Chat with Oracle button (Primary CTA) - FREE for everyone
         GestureDetector(
           onTap: () {
             HapticFeedback.mediumImpact();
@@ -551,7 +775,7 @@ class _TarotRevealScreenState extends ConsumerState<TarotRevealScreen>
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(
+                const Icon(
                   Icons.auto_awesome,
                   size: 18,
                   color: AppColors.secondary,
@@ -570,12 +794,7 @@ class _TarotRevealScreenState extends ConsumerState<TarotRevealScreen>
         )
             .animate()
             .fadeIn(delay: 1800.ms, duration: 500.ms)
-            .slideY(begin: 0.2, end: 0)
-            .then()
-            .shimmer(
-              duration: 2000.ms,
-              color: AppColors.secondaryLight.withValues(alpha: 0.3),
-            ),
+            .slideY(begin: 0.2, end: 0),
 
         const SizedBox(height: 16),
 
@@ -616,33 +835,6 @@ class _TarotRevealScreenState extends ConsumerState<TarotRevealScreen>
         )
             .animate()
             .fadeIn(delay: 2200.ms, duration: 500.ms),
-
-        const SizedBox(height: 12),
-
-        // Share button (optional)
-        TextButton(
-          onPressed: () {
-            // TODO: Implement share functionality
-            HapticFeedback.selectionClick();
-          },
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                Icons.share_outlined,
-                size: 14,
-                color: AppColors.textTertiary,
-              ),
-              const SizedBox(width: 6),
-              Text(
-                'Share',
-                style: AppTypography.labelSmall.copyWith(
-                  color: AppColors.textTertiary,
-                ),
-              ),
-            ],
-          ),
-        ).animate().fadeIn(delay: 2400.ms, duration: 500.ms),
       ],
     );
   }
@@ -698,5 +890,31 @@ class _TarotRevealScreenState extends ConsumerState<TarotRevealScreen>
         ],
       ),
     );
+  }
+
+  /// Share the reading as text
+  void _shareReading() {
+    final readingState = ref.read(tarotReadingProvider);
+    final reading = readingState.reading;
+    if (reading == null) return;
+
+    final cardName = reading.primaryCard?.name ?? widget.cardName;
+    final orientation = (reading.primaryCard?.isUpright ?? widget.isUpright) ? 'Upright' : 'Reversed';
+    final interpretation = reading.interpretation;
+
+    final shareText = '''
+✨ Ask The Oracle ✨
+
+🃏 Card: $cardName ($orientation)
+
+❓ Question: ${widget.question.isEmpty ? 'General reading' : widget.question}
+
+📜 Oracle's Wisdom:
+$interpretation
+
+🔮 Discover your destiny at mystic.app
+''';
+
+    Share.share(shareText, subject: 'Tarot Reading - $cardName');
   }
 }

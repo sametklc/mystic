@@ -1,10 +1,13 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/constants/constants.dart';
+import '../../../../shared/providers/user_provider.dart';
+import '../../../paywall/paywall.dart';
 import '../../data/character_data.dart';
 import '../../domain/models/character_model.dart';
 import '../providers/character_provider.dart';
@@ -57,6 +60,8 @@ class _CharacterCarouselState extends ConsumerState<CharacterCarousel> {
     final characters = CharacterData.characters;
     final selectedIndex = ref.watch(selectedCharacterIndexProvider);
 
+    final isPremium = ref.watch(isPremiumProvider);
+
     // Allow overflow so shadows and glows don't get clipped
     return ClipRect(
       clipBehavior: Clip.none,
@@ -68,10 +73,16 @@ class _CharacterCarouselState extends ConsumerState<CharacterCarousel> {
           ref.read(selectedCharacterIndexProvider.notifier).selectCharacter(index);
         },
         itemBuilder: (context, index) {
+          final character = characters[index];
+          // Luna (madame_luna) is free, others require premium
+          final requiresPremium = character.id != 'madame_luna';
+          final isLockedForUser = requiresPremium && !isPremium;
+
           return _buildCarouselCard(
-            character: characters[index],
+            character: character,
             index: index,
             isActive: index == selectedIndex,
+            isLockedForUser: isLockedForUser,
           );
         },
       ),
@@ -82,6 +93,7 @@ class _CharacterCarouselState extends ConsumerState<CharacterCarousel> {
     required CharacterModel character,
     required int index,
     required bool isActive,
+    required bool isLockedForUser,
   }) {
     // Calculate parallax values based on scroll position
     final double difference = index - _currentPage;
@@ -106,14 +118,15 @@ class _CharacterCarouselState extends ConsumerState<CharacterCarousel> {
           child: _TarotCharacterCard(
             character: character,
             isActive: isActive,
-            onTap: () => _onCharacterTap(index, isActive),
+            isLockedForUser: isLockedForUser,
+            onTap: () => _onCharacterTap(index, isActive, isLockedForUser),
           ),
         ),
       ),
     );
   }
 
-  void _onCharacterTap(int index, bool isActive) {
+  void _onCharacterTap(int index, bool isActive, bool isLockedForUser) {
     if (!isActive) {
       _pageController.animateToPage(
         index,
@@ -121,13 +134,27 @@ class _CharacterCarouselState extends ConsumerState<CharacterCarousel> {
         curve: Curves.easeOutCubic,
       );
     } else {
-      _showCharacterSelected(index);
+      _showCharacterSelected(index, isLockedForUser);
     }
   }
 
-  void _showCharacterSelected(int index) {
+  void _showCharacterSelected(int index, bool isLockedForUser) {
     final character = CharacterData.characters[index];
 
+    // If locked for this user (premium required), navigate to paywall
+    if (isLockedForUser) {
+      HapticFeedback.mediumImpact();
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => PaywallView(
+            onClose: () => Navigator.of(context).pop(),
+          ),
+        ),
+      );
+      return;
+    }
+
+    // If locked by system (coming soon)
     if (character.isLocked) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -160,11 +187,13 @@ class _CharacterCarouselState extends ConsumerState<CharacterCarousel> {
 class _TarotCharacterCard extends StatelessWidget {
   final CharacterModel character;
   final bool isActive;
+  final bool isLockedForUser;
   final VoidCallback? onTap;
 
   const _TarotCharacterCard({
     required this.character,
     required this.isActive,
+    this.isLockedForUser = false,
     this.onTap,
   });
 
@@ -233,8 +262,11 @@ class _TarotCharacterCard extends StatelessWidget {
                     // Main content
                     _buildCardContent(context, themeColor),
 
-                    // Lock overlay
-                    if (character.isLocked) _buildLockOverlay(themeColor),
+                    // Premium lock overlay (for non-premium users)
+                    if (isLockedForUser) _buildPremiumLockOverlay(themeColor),
+
+                    // System lock overlay (coming soon)
+                    if (character.isLocked && !isLockedForUser) _buildLockOverlay(themeColor),
 
                     // Golden corner accents
                     _buildCornerAccents(),
@@ -247,8 +279,8 @@ class _TarotCharacterCard extends StatelessWidget {
       ),
     );
 
-    // Subtle pulse animation for active card
-    if (isActive && !character.isLocked) {
+    // Subtle pulse animation for active card (only if unlocked)
+    if (isActive && !character.isLocked && !isLockedForUser) {
       card = card
           .animate(
             onPlay: (controller) => controller.repeat(reverse: true),
@@ -260,6 +292,78 @@ class _TarotCharacterCard extends StatelessWidget {
     }
 
     return card;
+  }
+
+  /// Premium lock overlay - shows when character requires premium
+  Widget _buildPremiumLockOverlay(Color themeColor) {
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            Colors.black.withOpacity(0.5),
+            Colors.black.withOpacity(0.7),
+            Colors.black.withOpacity(0.85),
+          ],
+        ),
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          // Premium crown icon with glow
+          Container(
+            padding: const EdgeInsets.all(18),
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: const LinearGradient(
+                colors: [_goldColor, _goldDark],
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: _goldColor.withOpacity(0.5),
+                  blurRadius: 25,
+                  spreadRadius: 5,
+                ),
+              ],
+            ),
+            child: const Icon(
+              Icons.workspace_premium,
+              size: 32,
+              color: Color(0xFF1A0A2E),
+            ),
+          ),
+          const SizedBox(height: 16),
+          // "PREMIUM" text with gold gradient
+          ShaderMask(
+            shaderCallback: (bounds) => const LinearGradient(
+              colors: [_goldDark, _goldColor, _goldLight, _goldColor, _goldDark],
+            ).createShader(bounds),
+            child: Text(
+              'PREMIUM',
+              style: AppTypography.labelMedium.copyWith(
+                color: Colors.white,
+                letterSpacing: 3.0,
+                fontSize: 13,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          // "Tap to Unlock" subtitle
+          Text(
+            'Tap to Unlock',
+            style: AppTypography.bodySmall.copyWith(
+              color: _goldColor.withOpacity(0.7),
+              fontSize: 10,
+              fontStyle: FontStyle.italic,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildBackground(Color themeColor) {

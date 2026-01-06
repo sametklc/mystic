@@ -1,4 +1,4 @@
-package com.mystic.mystic
+package com.skapps.mystic
 
 import io.flutter.embedding.android.FlutterActivity
 

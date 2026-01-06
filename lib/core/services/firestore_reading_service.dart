@@ -22,11 +22,15 @@ class FirestoreReadingService {
     required bool isUpright,
     required String interpretation,
     String? imageUrl,
+    String? temporaryImageUrl,
     String? moonPhase,
     String characterId = 'madame_luna',
   }) async {
     try {
       final docRef = _readingsCollection(userId).doc();
+
+      // Use permanent URL if available, otherwise use temporary URL
+      final effectiveImageUrl = imageUrl ?? temporaryImageUrl;
 
       final data = {
         'id': docRef.id,
@@ -34,7 +38,8 @@ class FirestoreReadingService {
         'card_name': cardName,
         'is_upright': isUpright,
         'interpretation': interpretation,
-        'image_url': imageUrl,
+        'image_url': effectiveImageUrl,
+        'temporary_image_url': temporaryImageUrl,
         'moon_phase': moonPhase ?? _getCurrentMoonPhase(),
         'character_id': characterId,
         'created_at': FieldValue.serverTimestamp(),
